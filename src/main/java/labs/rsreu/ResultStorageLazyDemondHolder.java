@@ -1,6 +1,7 @@
 package labs.rsreu;
 
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Класс для ленивой инициализации хранилища результатов
@@ -15,6 +16,7 @@ public class ResultStorageLazyDemondHolder implements IResultStorage {
     private int totalSteps;
     // Порог для вывода прогресса
     private final int progressThreshold = 15_000_000;
+    private final ReentrantLock lock = new ReentrantLock();
 
     /**
      * Приватный конструктор для предотвращения создания новых экземпляров
@@ -63,10 +65,15 @@ public class ResultStorageLazyDemondHolder implements IResultStorage {
      * если достигнут порог.
      */
     public void incrementIterations() {
-        int currentIterations = iterations.incrementAndGet();
-        if (currentIterations % progressThreshold == 0) {
-            double percentCompleted = (double) currentIterations / totalSteps * 100;
-            System.out.printf("Прогресс: %.2f%%%n", percentCompleted);
+        lock.lock(); // Получаем замок
+        try {
+            int currentIterations = iterations.incrementAndGet();
+            if (currentIterations % progressThreshold == 0) {
+                double percentCompleted = (double) currentIterations / totalSteps * 100;
+                System.out.printf("Прогресс: %.2f%%%n", percentCompleted);
+            }
+        } finally {
+            lock.unlock(); // Освобождаем замок
         }
     }
 
