@@ -17,11 +17,12 @@ public class MyLatch {
      * Уменьшает счетчик на 1. Если счетчик достигает 0, уведомляет ожидающие потоки.
      */
     public synchronized void countDown() {
-        if (count > 0) {
-            count--;
-            if (count == 0) {
-                notifyAll(); // Уведомляем ожидающие потоки, что защелка открыта
-            }
+        if (count <= 0) {
+            throw new IllegalStateException("Счетчик уже равен нулю");
+        }
+        count--;
+        if (count == 0) {
+            notifyAll(); // Уведомляем ожидающие потоки, что защелка открыта
         }
     }
 

@@ -1,15 +1,9 @@
 package labs.rsreu;
 
-/**
- * Собственная реализация семафора через мониторы
- */
 public class MySemaphore {
     private int permits;
+    private int acquiredCount = 0; // Счетчик активных захватов
 
-    /**
-     * Конструктор, инициализирующий семафор с заданным количеством разрешений.
-     * @param permits - начальное количество разрешений
-     */
     public MySemaphore(int permits) {
         if (permits < 0) {
             throw new IllegalArgumentException("Количество разрешений должно быть неотрицательным");
@@ -17,35 +11,29 @@ public class MySemaphore {
         this.permits = permits;
     }
 
-    /**
-     * Метод для получения разрешения. Если разрешений недостаточно, поток блокируется.
-     * @throws InterruptedException если поток прерван
-     */
     public synchronized void acquire() throws InterruptedException {
-        while (permits == 0) {
+        while (permits <= 0) { // Изменено на <= 0
             wait();
         }
         permits--;
+        acquiredCount++; // Увеличиваем счетчик захватов
     }
 
-    /**
-     *  Метод для попытки захватить семафор без блокировки.
-     *  Если семафор доступен, метод уменьшает количество разрешений
-     * @return - успешен ли результат
-     */
+    public synchronized void release() {
+        if (acquiredCount <= 0) { // Проверяем, были ли захваты
+            throw new IllegalStateException("Попытка освободить семафор, который не заблокирован.");
+        }
+        permits++;
+        acquiredCount--; // Уменьшаем счетчик захватов
+        notify();
+    }
+
     public synchronized boolean tryAcquire() {
         if (permits > 0) {
             permits--;
+            acquiredCount++;
             return true;
         }
         return false;
-    }
-
-    /**
-     * Метод для освобождения разрешения. Если есть ожидающие потоки, они будут разблокированы.
-     */
-    public synchronized void release() {
-        permits++;
-        notify();
     }
 }

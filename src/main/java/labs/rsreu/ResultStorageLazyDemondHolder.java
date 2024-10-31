@@ -11,8 +11,8 @@ public class ResultStorageLazyDemondHolder implements IResultStorage {
     // Поле для хранения суммы результатов
     private volatile double totalResult = 0.0;
     // Поле для отслеживания итераций
-//    private final AtomicInteger iterations = new AtomicInteger(0);
-    private int iterations = 0;
+    private final AtomicInteger iterations = new AtomicInteger(0);
+//    private int iterations = 0;
     // Общее количество шагов для вычисления (например, общее число интервалов)
     private int totalSteps;
     // Порог для вывода прогресса
@@ -69,10 +69,10 @@ public class ResultStorageLazyDemondHolder implements IResultStorage {
     public void incrementIterations() throws InterruptedException {
         lock.lock();
         try {
-//            int currentIterations = iterations.incrementAndGet();
-            iterations++;
-            if (iterations % progressThreshold == 0) {
-                double percentCompleted = (double) iterations / totalSteps * 100;
+            int currentIterations = iterations.incrementAndGet();
+//            iterations++;
+            if (currentIterations % progressThreshold == 0) {
+                double percentCompleted = (double) currentIterations / totalSteps * 100;
                 System.out.printf("Прогресс: %.2f%%%n", percentCompleted);
             }
         } finally {
