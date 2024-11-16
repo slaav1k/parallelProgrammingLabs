@@ -1,5 +1,14 @@
 package labs.rsreu;
 
+import labs.rsreu.clients.Client;
+import labs.rsreu.clients.ClientsList;
+import labs.rsreu.currencies.Currency;
+import labs.rsreu.currencies.CurrencyPair;
+import labs.rsreu.currencies.CurrencyPairRegistry;
+import labs.rsreu.exchanges.Exchange;
+import labs.rsreu.exchanges.IExchange;
+import labs.rsreu.orders.OrderTask;
+
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.concurrent.*;
@@ -14,10 +23,11 @@ public class Main {
         addRandomCurrencyPairs(registry);
         IExchange exchange = new Exchange(registry);
 
-        List<Client> clients = createClients(numberOfClients, exchange);
+        ClientsList clients = new ClientsList();
+        generateClients(numberOfClients, clients);
 
-        EnumMap<Currency, BigDecimal> totalBalances = exchange.getTotalBalances();
-        for (Map.Entry<Currency, BigDecimal> entry : totalBalances.entrySet()) {
+        EnumMap<Currency, BigDecimal> totalBalances = clients.getTotalBalances();
+        for (Map.Entry<labs.rsreu.currencies.Currency, BigDecimal> entry : totalBalances.entrySet()) {
             System.out.println(entry.getKey() + ": " + entry.getValue());
         }
 
@@ -29,7 +39,7 @@ public class Main {
         List<Future<String>> futures = new ArrayList<>();
 
         // Отправляем задачи на выполнение
-        clients.forEach(client -> {
+        clients.getAllClients().forEach(client -> {
             OrderTask orderTask = new OrderTask(client, exchange, registry, MAX_COUNT_ORDERS);
             futures.add(executorService.submit(orderTask)); // Отправляем задачу
         });
@@ -46,21 +56,21 @@ public class Main {
         // Завершаем работу ExecutorService
         executorService.shutdown();
 
-        EnumMap<Currency, BigDecimal> totalBalances2 = exchange.getTotalBalances();
-        for (Map.Entry<Currency, BigDecimal> entry : totalBalances2.entrySet()) {
+        EnumMap<Currency, BigDecimal> totalBalances2 = clients.getTotalBalances();
+        for (Map.Entry<labs.rsreu.currencies.Currency, BigDecimal> entry : totalBalances2.entrySet()) {
             System.out.println(entry.getKey() + ": " + entry.getValue());
         }
     }
 
     // Метод для добавления случайных валютных пар
     private static void addRandomCurrencyPairs(CurrencyPairRegistry registry) {
-        int totalPairs = Currency.values().length * (Currency.values().length - 1);
+        int totalPairs = labs.rsreu.currencies.Currency.values().length * (labs.rsreu.currencies.Currency.values().length - 1);
         int randomPairsCount = 1 + random.nextInt(totalPairs);
         int addedPairs = 0;
 
         while (addedPairs < randomPairsCount) {
-            Currency baseCurrency = Currency.values()[random.nextInt(Currency.values().length)];
-            Currency quoteCurrency = Currency.values()[random.nextInt(Currency.values().length)];
+            labs.rsreu.currencies.Currency baseCurrency = labs.rsreu.currencies.Currency.values()[random.nextInt(labs.rsreu.currencies.Currency.values().length)];
+            labs.rsreu.currencies.Currency quoteCurrency = labs.rsreu.currencies.Currency.values()[random.nextInt(labs.rsreu.currencies.Currency.values().length)];
             if (baseCurrency != quoteCurrency) {
                 CurrencyPair currencyPair = new CurrencyPair(baseCurrency, quoteCurrency);
                 if (!registry.isValidCurrencyPair(currencyPair)) {
@@ -72,21 +82,18 @@ public class Main {
     }
 
     // Создаем случайных клиентов
-    private static List<Client> createClients(int numberOfClients, IExchange exchange) {
-        List<Client> clients = new ArrayList<>(numberOfClients);
+    private static void generateClients(int numberOfClients, ClientsList clientsList) {
         for (int i = 0; i < numberOfClients; i++) {
             EnumMap<Currency, BigDecimal> initialBalances = new EnumMap<>(Currency.class);
-            for (Currency currency : Currency.values()) {
+            for (labs.rsreu.currencies.Currency currency : Currency.values()) {
                 if (random.nextBoolean()) {
                     BigDecimal randomAmount = BigDecimal.valueOf(100 + random.nextDouble() * 900);
                     initialBalances.put(currency, randomAmount);
                 }
             }
-            Client client = exchange.createClient(initialBalances);
-            clients.add(client);
+            Client client = clientsList.createClient(initialBalances);
             System.out.println("Создан клиент: " + client);
         }
-        return clients;
     }
 }
 

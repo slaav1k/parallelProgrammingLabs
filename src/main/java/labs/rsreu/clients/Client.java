@@ -1,8 +1,9 @@
-package labs.rsreu;
+package labs.rsreu.clients;
+
+import labs.rsreu.currencies.Currency;
 
 import java.math.BigDecimal;
 import java.util.EnumMap;
-import java.util.UUID;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 

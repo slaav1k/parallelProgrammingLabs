@@ -1,4 +1,10 @@
-package labs.rsreu;
+package labs.rsreu.orders;
+
+import labs.rsreu.clients.Client;
+import labs.rsreu.exchanges.IExchange;
+import labs.rsreu.currencies.Currency;
+import labs.rsreu.currencies.CurrencyPair;
+import labs.rsreu.currencies.CurrencyPairRegistry;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -35,7 +41,8 @@ public class OrderTask implements Callable<String> {
                 // Создаем ордер
                 Order order = new Order(
                         orderType,                      // тип ордера (BUY или SELL)
-                        client.getId(),                 // ID клиента
+//                        client.getId(),                 // ID клиента
+                        client,
                         currencyPair,                   // валютная пара
                         amountFirst,                    // количество первой валюты
                         amountSecond,                   // количество второй валюты

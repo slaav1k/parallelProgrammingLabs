@@ -1,6 +1,11 @@
-import labs.rsreu.*;
-import labs.rsreu.Currency;
-import org.junit.jupiter.api.RepeatedTest;
+import labs.rsreu.clients.Client;
+import labs.rsreu.clients.ClientsList;
+import labs.rsreu.currencies.Currency;
+import labs.rsreu.currencies.CurrencyPair;
+import labs.rsreu.currencies.CurrencyPairRegistry;
+import labs.rsreu.exchanges.Exchange;
+import labs.rsreu.exchanges.IExchange;
+import labs.rsreu.orders.OrderTask;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 import java.math.BigDecimal;
@@ -21,17 +26,18 @@ public class LoadExchangeTest {
         IExchange exchange = new Exchange(currencyPairRegistry);
 
         // Генерация и создание клиентов
-        List<Client> clients = createClients(MAX_COUNT_CLIENTS, exchange);
+        ClientsList clients = new ClientsList();
+        generateClients(MAX_COUNT_CLIENTS, clients);
 
         // Сохраняем начальный баланс биржи по каждой валюте
-        EnumMap<Currency, BigDecimal> initialBalances = getTotalBalancesPerCurrency(clients, exchange);
+        EnumMap<Currency, BigDecimal> initialBalances = clients.getTotalBalances();
 
         // Создаем ExecutorService для обработки заявок в разных потоках
         ExecutorService executorService = Executors.newFixedThreadPool(clients.size());
 
         // Запускаем задачи для каждого клиента
         List<Callable<String>> tasks = new ArrayList<>();
-        for (Client client : clients) {
+        for (Client client : clients.getAllClients()) {
             tasks.add(new OrderTask(client, exchange, currencyPairRegistry, MAX_COUNT_ORDERS));
         }
 
@@ -51,7 +57,7 @@ public class LoadExchangeTest {
         executorService.shutdown();
 
         // Сравниваем итоговый баланс биржи по каждой валюте
-        EnumMap<Currency, BigDecimal> finalBalances = getTotalBalancesPerCurrency(clients, exchange);
+        EnumMap<Currency, BigDecimal> finalBalances = clients.getTotalBalances();
 
         // Проверяем, что баланс биржи по каждой валюте не изменился
         // Сравниваем балансы каждой валюты на бирже
@@ -73,8 +79,7 @@ public class LoadExchangeTest {
     }
 
     // Метод для создания случайных клиентов и добавления их в биржу
-    private List<Client> createClients(int numberOfClients, IExchange exchange) {
-        List<Client> clients = new ArrayList<>(numberOfClients);
+    private void generateClients(int numberOfClients, ClientsList clients) {
         for (int i = 0; i < numberOfClients; i++) {
             // Генерация случайного клиента с балансом
             EnumMap<Currency, BigDecimal> initialBalances = new EnumMap<>(Currency.class);
@@ -82,32 +87,31 @@ public class LoadExchangeTest {
                 initialBalances.put(currency, BigDecimal.valueOf(100 + random.nextDouble() * 900));
             }
             // Добавляем клиента в биржу
-            clients.add(exchange.createClient(initialBalances));
+            clients.createClient(initialBalances);
         }
-        return clients;
     }
 
-    // Метод для подсчета баланса биржи по каждой валюте
-    private EnumMap<Currency, BigDecimal> getTotalBalancesPerCurrency(List<Client> clients, IExchange exchange) {
-        EnumMap<Currency, BigDecimal> totalBalances = new EnumMap<>(Currency.class);
-        for (Client client : clients) {
-            for (Currency currency : client.getAllBalances().keySet()) {
-                totalBalances.put(currency,
-                        totalBalances.getOrDefault(currency, BigDecimal.ZERO).add(client.getBalance(currency)));
-            }
-        }
-        return totalBalances;
-    }
+//    // Метод для подсчета баланса биржи по каждой валюте
+//    private EnumMap<Currency, BigDecimal> getTotalBalancesPerCurrency(List<Client> clients, IExchange exchange) {
+//        EnumMap<Currency, BigDecimal> totalBalances = new EnumMap<>(Currency.class);
+//        for (Client client : clients) {
+//            for (Currency currency : client.getAllBalances().keySet()) {
+//                totalBalances.put(currency,
+//                        totalBalances.getOrDefault(currency, BigDecimal.ZERO).add(client.getBalance(currency)));
+//            }
+//        }
+//        return totalBalances;
+//    }
 
     // Метод для добавления случайных валютных пар
     private static void addRandomCurrencyPairs(CurrencyPairRegistry registry) {
-        int totalPairs = labs.rsreu.Currency.values().length * (labs.rsreu.Currency.values().length - 1);
+        int totalPairs = Currency.values().length * (Currency.values().length - 1);
         int randomPairsCount = 1 + random.nextInt(totalPairs);
         int addedPairs = 0;
 
         while (addedPairs < randomPairsCount) {
-            labs.rsreu.Currency baseCurrency = labs.rsreu.Currency.values()[random.nextInt(labs.rsreu.Currency.values().length)];
-            labs.rsreu.Currency quoteCurrency = labs.rsreu.Currency.values()[random.nextInt(labs.rsreu.Currency.values().length)];
+            Currency baseCurrency = Currency.values()[random.nextInt(Currency.values().length)];
+            Currency quoteCurrency = Currency.values()[random.nextInt(Currency.values().length)];
             if (baseCurrency != quoteCurrency) {
                 CurrencyPair currencyPair = new CurrencyPair(baseCurrency, quoteCurrency);
                 if (!registry.isValidCurrencyPair(currencyPair)) {
@@ -120,10 +124,10 @@ public class LoadExchangeTest {
 
 
     private static void addAllCurrencyPairs(CurrencyPairRegistry registry) {
-        labs.rsreu.Currency[] currencies = labs.rsreu.Currency.values();
+        Currency[] currencies = Currency.values();
 
-        for (labs.rsreu.Currency baseCurrency : currencies) {
-            for (labs.rsreu.Currency quoteCurrency : currencies) {
+        for (Currency baseCurrency : currencies) {
+            for (Currency quoteCurrency : currencies) {
                 if (baseCurrency != quoteCurrency) { // Исключаем одинаковые валюты в паре
                     CurrencyPair currencyPair = new CurrencyPair(baseCurrency, quoteCurrency);
                     if (!registry.isValidCurrencyPair(currencyPair)) {

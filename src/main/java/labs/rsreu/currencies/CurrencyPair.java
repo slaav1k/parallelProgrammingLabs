@@ -1,4 +1,4 @@
-package labs.rsreu;
+package labs.rsreu.currencies;
 
 
 
