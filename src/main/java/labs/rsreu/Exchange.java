@@ -118,6 +118,7 @@ public class Exchange implements IExchange {
 
                 BigDecimal transactionPrice = eachSellOrder.getPrice();
                 List<BigDecimal> transactionsAmountCurrency = processTransaction(buyOrder, eachSellOrder, transactionPrice);
+
                 BigDecimal transactionAmountBuyCurrency = transactionsAmountCurrency.get(1);
                 BigDecimal transactionAmountSellCurrency = transactionsAmountCurrency.get(0);
 

@@ -16,7 +16,6 @@ public interface IExchange {
      */
     Client createClient(EnumMap<Currency, BigDecimal> balance);
 
-
     /**
      * Создание заявки на покупку или продажу валюты.
      * @param order - Заявка на покупку/продажу.
