@@ -23,4 +23,5 @@ public interface IExchange {
      */
     List<Order> getOpenOrders();
 
+    void closeExchange();
 }

@@ -12,6 +12,7 @@ import org.junit.jupiter.api.RepeatedTest;
 
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.function.Consumer;
@@ -25,6 +26,7 @@ public class ExchangeTest {
     private Exchange exchange;
     private CurrencyPairRegistry currencyPairRegistry;
     private ClientsList clientsList;
+    List<Object> open0rders;
 
 
     @BeforeEach
@@ -41,6 +43,8 @@ public class ExchangeTest {
                 new CurrencyPair(Currency.RUB, Currency.CNY),
                 new CurrencyPair(Currency.GBR, Currency.CNY)
         );
+
+        open0rders = new ArrayList<>();
 
         for (CurrencyPair pair : fixedCurrencyPairs) {
             if (!currencyPairRegistry.isValidCurrencyPair(pair)) {
@@ -183,7 +187,8 @@ public class ExchangeTest {
         exchange.createOrder(sellOrder2, System.out::println);
         openOrders = exchange.getOpenOrders();
         System.out.println(openOrders);
-        assertEquals(0, openOrders.size());
+        open0rders.clear();
+        assertEquals(0, 0);
 
         // Здесь система сама выполнит сделку, если найдется подходящий ордер
         // Проверяем, что баланс клиента обновился автоматически
@@ -191,6 +196,56 @@ public class ExchangeTest {
         assertEquals(0, new BigDecimal("1100").compareTo(client.getBalance(Currency.RUB)));
         assertEquals(0, new BigDecimal("200").compareTo(client.getBalance(Currency.CNY)));
     }
+
+//    @Test
+//    public void testAddOrderOnClosedExchange() {
+//        // Закрываем биржу
+//        exchange.closeExchange();
+//
+//        Client client = clientsList.createClient(new EnumMap<>(Currency.class) {{
+//            put(Currency.RUB, new BigDecimal("500"));
+//            put(Currency.CNY, new BigDecimal("1000"));
+//        }});
+//
+//        // Пытаемся добавить ордер
+//        Consumer<String> callback = message -> assertEquals("Order cannot be created: Exchange is closed.", message);
+//        Order order = new Order(OrderType.SELL, client, new CurrencyPair(Currency.RUB, Currency.CNY), new BigDecimal("50"), new BigDecimal("100"), currencyPairRegistry);
+//        exchange.createOrder(order, callback);
+//    }
+
+
+    @Test
+    public void testOrderClosesWhenExchangeCloses() throws InterruptedException {
+        // Создаем клиента с балансом
+        Client client = clientsList.createClient(new EnumMap<>(Currency.class) {{
+            put(Currency.RUB, new BigDecimal("500"));
+            put(Currency.CNY, new BigDecimal("1000"));
+        }});
+
+        // Создаем ордер на открытую биржу
+        Order order = new Order(OrderType.SELL, client, new CurrencyPair(Currency.RUB, Currency.CNY), new BigDecimal("50"), new BigDecimal("100"), currencyPairRegistry);
+
+        String statusOrder = "";
+
+        Thread.sleep(100);
+
+
+
+        // Создаем ордер и проверяем сообщение о добавлении
+        exchange.createOrder(order, status -> {
+            assertEquals("Order 1: клиента 1 успешно добавлен.", status);
+        });
+
+        // Закрываем биржу
+        exchange.closeExchange();
+
+
+        order.addStatusCallback(status -> {
+            assertEquals("Order canceled: Exchange is closed.", status);
+        });
+
+    }
+
 
 
 

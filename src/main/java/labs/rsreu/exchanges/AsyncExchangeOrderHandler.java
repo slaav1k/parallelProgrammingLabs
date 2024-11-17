@@ -14,21 +14,29 @@ import java.util.stream.Collectors;
 
 public class AsyncExchangeOrderHandler implements Runnable {
     private final BlockingQueue<Order> orderQueue;
+    private boolean isExchangeClosed = false;
+//    private final PriorityQueue<Order> sellOrdersQueue;
+//    private final PriorityQueue<Order> buyOrdersQueue;
 
     public AsyncExchangeOrderHandler(BlockingQueue<Order> orderQueue) {
         this.orderQueue = orderQueue;
+//        this.sellOrdersQueue = new PriorityQueue<>(Comparator.comparing(Order::getPrice).reversed());
+//        this.buyOrdersQueue = new PriorityQueue<>(Comparator.comparing(Order::getPrice));
     }
 
 
     @Override
     public void run() {
         try {
-            while (true) {
+            while (!isExchangeClosed) {
                 Order order = orderQueue.take();
 
                 if (order.getType() == OrderType.BUY) {
+//                    buyOrdersQueue.offer(order); // офер возращает тру фалсе и позволяет
+                    // обработать исключение без выбрасывания
                     processBuyOrder(order);
                 } else {
+//                    sellOrdersQueue.offer(order);
                     processSellOrder(order);
                 }
             }
@@ -41,6 +49,7 @@ public class AsyncExchangeOrderHandler implements Runnable {
     private void processBuyOrder(Order buyOrder) {
         List<Order> sellOrders = getSellOrders();
         Iterator<Order> iterator = sellOrders.iterator();
+//        Iterator<Order> iterator = sellOrdersQueue.iterator();
         while (iterator.hasNext()) {
             Order eachSellOrder = iterator.next();
             if (eachSellOrder.getClient().getId() != buyOrder.getClient().getId()
@@ -62,12 +71,16 @@ public class AsyncExchangeOrderHandler implements Runnable {
 
                 // Обновление ордера на покупку, если остаток больше нуля
                 if (remainingAmountBuyCurrency.compareTo(BigDecimal.ZERO) == 0) {
-                    System.out.println("Покупатель купил все, заявка удалена.");
+//                    System.out.println("Покупатель купил все, заявка удалена.");
 //                    resultCallback.accept("Покупатель купил все, заявка удалена.");
+                    buyOrder.notifyStatus("Buyer " + buyOrder.getClient().getId() + " all bought. Order "
+                            + buyOrder.getId() + " closed.");
 
                 } else {
                     buyOrder.setAmountFirst(remainingAmountBuyCurrency);
                     buyOrder.setAmountSecond(remainingAmountSellCurrency);
+                    buyOrder.notifyStatus("Buyer " + buyOrder.getClient().getId() + " bought some part. Order "
+                            + buyOrder.getId() + " still open.");
                     orderQueue.add(buyOrder);
                 }
 
@@ -75,13 +88,17 @@ public class AsyncExchangeOrderHandler implements Runnable {
                 if (remainingAmountSellOrderBuyCurrency.compareTo(BigDecimal.ZERO) == 0) {
                     iterator.remove();
                     orderQueue.remove(eachSellOrder);
-                    System.out.println("Продавец продал все, заявка удалена.");
+//                    sellOrdersQueue.remove(eachSellOrder);
+                    eachSellOrder.notifyStatus("Seller " + eachSellOrder.getClient().getId() + " all sold. Order "
+                            + eachSellOrder.getId() + " closed.");
+//                    System.out.println("Продавец продал все, заявка удалена.");
 //                    resultCallback.accept("Продавец продал все, заявка удалена.");
 
                 } else {
                     eachSellOrder.setAmountFirst(remainingAmountSellOrderBuyCurrency);
                     eachSellOrder.setAmountSecond(remainingAmountSellOrderSellCurrency);
-
+                    eachSellOrder.notifyStatus("Seller " + eachSellOrder.getClient().getId() + " sold some part. Order "
+                            + eachSellOrder.getId() + " still open.");
                 }
             }
         }
@@ -90,6 +107,8 @@ public class AsyncExchangeOrderHandler implements Runnable {
     private void processSellOrder(Order sellOrder) {
         List<Order> buyOrders = getBuyOrders();
         Iterator<Order> iterator = buyOrders.iterator();
+//        Iterator<Order> iterator = buyOrdersQueue.iterator();
+
         while (iterator.hasNext()) {
             Order eachBuyOrder = iterator.next();
 
@@ -114,11 +133,15 @@ public class AsyncExchangeOrderHandler implements Runnable {
 
                 // Обновление ордера на продажу, если остаток больше нуля
                 if (remainingAmountSellCurrency.compareTo(BigDecimal.ZERO) == 0) {
-                    System.out.println("Продавец продал все, заявка удалена.");
+//                    System.out.println("Продавец продал все, заявка удалена.");
+                    sellOrder.notifyStatus("Seller " + sellOrder.getClient().getId() + " all sold. Order "
+                            + sellOrder.getId() + " closed.");
 //                    resultCallback.accept("Продавец продал все, заявка удалена.");
                 } else {
                     sellOrder.setAmountFirst(remainingAmountSellCurrency);
                     sellOrder.setAmountSecond(remainingAmountBuyCurrency);
+                    sellOrder.notifyStatus("Seller " + sellOrder.getClient().getId() + " sold some part. Order "
+                            + sellOrder.getId() + " still open.");
                     orderQueue.add(sellOrder);
                 }
 
@@ -126,11 +149,17 @@ public class AsyncExchangeOrderHandler implements Runnable {
                 if (remainingAmountBuyOrderSellCurrency.compareTo(BigDecimal.ZERO) == 0) {
                     iterator.remove();
                     orderQueue.remove(eachBuyOrder);
-                    System.out.println("Покупатель купил все, заявка удалена.");
+//                    buyOrdersQueue.remove(eachBuyOrder);
+//                    System.out.println("Покупатель купил все, заявка удалена.");
+                    eachBuyOrder.notifyStatus("Buyer " + eachBuyOrder.getClient().getId() + " all bought. Order "
+                            + eachBuyOrder.getId() + " closed.");
 //                    resultCallback.accept("Покупатель купил все, заявка удалена.");
                 } else {
                     eachBuyOrder.setAmountFirst(remainingAmountBuyOrderSellCurrency);
                     eachBuyOrder.setAmountSecond(remainingAmountBuyOrderBuyCurrency);
+                    eachBuyOrder.notifyStatus("Buyer " + eachBuyOrder.getClient().getId() + " bought some part. Order "
+                            + eachBuyOrder.getId() + " still open.");
+
                 }
             }
         }
@@ -211,5 +240,14 @@ public class AsyncExchangeOrderHandler implements Runnable {
     }
 
 
+    public void closeExchange() {
+        isExchangeClosed = true;
 
+        for (Order order : orderQueue) {
+            order.notifyStatus("Order canceled: Exchange is closed.");
+        }
+
+
+        orderQueue.clear();
+    }
 }

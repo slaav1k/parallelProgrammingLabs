@@ -51,9 +51,14 @@ public class OrderTask implements Callable<String> {
 
                 System.out.println(order);
 
-                exchange.createOrder(order, result -> {
-//                    System.out.println("Order " + order.getId() + " завершен для клиента " + client.getId() + ": " + result);
+//                exchange.createOrder(order, result -> {
+////                    System.out.println("Order " + order.getId() + " завершен для клиента " + client.getId() + ": " + result);
+//                });
+
+                exchange.createOrder(order, status -> {
+                    System.out.println("Received status update: " + status);
                 });
+
             }
 
             return "Заказы для клиента " + client.getId() + " успешно завершены.";

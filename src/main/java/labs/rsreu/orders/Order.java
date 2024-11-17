@@ -7,8 +7,11 @@ import labs.rsreu.currencies.CurrencyPairRegistry;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Consumer;
 
 public class Order {
     private final int id; // Уникальный идентификатор заказа
@@ -21,6 +24,7 @@ public class Order {
     private BigDecimal price; // Цена обмена
     private static int idCounter = 1; // Статический счетчик для создания уникальных ID
     private final Lock lock = new ReentrantLock(); // Блокировка для обеспечения потокобезопасности
+    private final List<Consumer<String>> statusCallbacks = new ArrayList<>();
 
     /**
      * Конструктор заказа с проверкой валидности валютной пары
@@ -59,6 +63,7 @@ public class Order {
         this.amountFirst = other.amountFirst;
         this.amountSecond = other.amountSecond;
         this.price = other.price;
+        this.statusCallbacks.addAll(other.statusCallbacks);
     }
 
     /**
@@ -73,7 +78,7 @@ public class Order {
                 this.amountFirst = amountFirst;
                 this.price = calculatePrice();
             } else {
-                throw new IllegalArgumentException("Amount must be positive");
+                throw new IllegalArgumentException("Amount must be positive " + amountFirst);
             }
         } finally {
             lock.unlock();
@@ -92,7 +97,8 @@ public class Order {
                 this.amountSecond = amountSecond;
                 this.price = calculatePrice();
             } else {
-                throw new IllegalArgumentException("Amount must be positive");
+
+                throw new IllegalArgumentException("Amount must be positive" + amountSecond);
             }
         } finally {
             lock.unlock();
@@ -186,5 +192,23 @@ public class Order {
      */
     public BigDecimal getAmountSecond() {
         return amountSecond;
+    }
+
+    /**
+     * Добавляем колбэк для статусов
+      * @param callback - колбэк для статусов
+     */
+    public void addStatusCallback(Consumer<String> callback) {
+        statusCallbacks.add(callback);
+    }
+
+    /**
+     * Создаем уведомеление
+     * @param status - уведомление
+     */
+    public void notifyStatus(String status) {
+        for (Consumer<String> callback : statusCallbacks) {
+            callback.accept(status);
+        }
     }
 }

@@ -14,6 +14,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 
 public class Exchange implements IExchange {
+    private boolean isExchangeClosed = false;
     private final CurrencyPairRegistry currencyPairRegistry; // Валютные пары
     private final List<Order> buyOrders = new ArrayList<>(); // Список ордеров на покупку
     private final List<Order> sellOrders = new ArrayList<>(); // Список ордеров на продажу
@@ -27,6 +28,12 @@ public class Exchange implements IExchange {
     @Override
     public void createOrder(Order inputOrder, Consumer<String> resultCallback) {
         lock.lock();
+
+        if (isExchangeClosed) {
+            resultCallback.accept("Order cannot be created: Exchange is closed.");
+            return;
+        }
+
         try {
 //            // Проверка, что клиент - клиент нашей биржи
 //            if (!clients.containsKey(inputOrder.getClientId())) {
@@ -71,15 +78,31 @@ public class Exchange implements IExchange {
         }
     }
 
+    @Override
+    public void closeExchange() {
+        isExchangeClosed = true;
+        // Отменяем все ордера
+        for (Order order : buyOrders) {
+            order.notifyStatus("Order canceled: Exchange is closed.");
+        }
+        for (Order order : sellOrders) {
+            order.notifyStatus("Order canceled: Exchange is closed.");
+        }
+//        buyOrders.clear();
+//        sellOrders.clear();
+    }
+
+
     // Добавление ордера на покупку
     private void addBuyOrder(Order buyOrder, Consumer<String> resultCallback) {
         boolean isMatched = false;
-        Iterator<Order> iterator = sellOrders.iterator();
-        while (iterator.hasNext()) {
-            Order eachSellOrder = iterator.next();
+        List<Order> updatedBuyOrders = new ArrayList<>();
+        List<Order> updatedSellOrders = new ArrayList<>();
+
+        for (Order eachSellOrder : sellOrders) {
             if (eachSellOrder.getClient().getId() != buyOrder.getClient().getId()
-                && eachSellOrder.getCurrencyPair().equals(buyOrder.getCurrencyPair())
-                && eachSellOrder.getPrice().compareTo(buyOrder.getPrice()) <= 0) {
+                    && eachSellOrder.getCurrencyPair().equals(buyOrder.getCurrencyPair())
+                    && eachSellOrder.getPrice().compareTo(buyOrder.getPrice()) <= 0) {
 
                 isMatched = true;
 
@@ -96,49 +119,38 @@ public class Exchange implements IExchange {
                 BigDecimal remainingAmountSellOrderBuyCurrency = eachSellOrder.getAmountFirst().subtract(transactionAmountBuyCurrency);
                 BigDecimal remainingAmountSellOrderSellCurrency = eachSellOrder.getAmountSecond().subtract(transactionAmountSellCurrency);
 
-                if (remainingAmountBuyCurrency.compareTo(BigDecimal.ZERO) == 0 && remainingAmountSellCurrency.compareTo(BigDecimal.ZERO) == 0) {
-                    resultCallback.accept("Заявка отменена. У одного из участников не хватило денег.");
-                }
-                // Обновление ордера на покупку, если остаток больше нуля
-                if (remainingAmountBuyCurrency.compareTo(BigDecimal.ZERO) == 0) {
-                    resultCallback.accept("Покупатель купил все, заявка удалена.");
-
-                } else {
+                if (remainingAmountBuyCurrency.compareTo(BigDecimal.ZERO) > 0) {
                     buyOrder.setAmountFirst(remainingAmountBuyCurrency);
                     buyOrder.setAmountSecond(remainingAmountSellCurrency);
-                    buyOrders.add(buyOrder);
-                    buyOrders.sort(Comparator.comparing(Order::getPrice));
+                    updatedBuyOrders.add(buyOrder);
                 }
 
-                // Обновление ордера на продажу, если остаток больше нуля
-                if (remainingAmountSellOrderBuyCurrency.compareTo(BigDecimal.ZERO) == 0) {
-                    iterator.remove();
-//                    System.out.println("Продавец продал все, заявка удалена.");
-                    resultCallback.accept("Продавец продал все, заявка удалена.");
-
-                } else {
+                if (remainingAmountSellOrderBuyCurrency.compareTo(BigDecimal.ZERO) > 0) {
                     eachSellOrder.setAmountFirst(remainingAmountSellOrderBuyCurrency);
                     eachSellOrder.setAmountSecond(remainingAmountSellOrderSellCurrency);
+                    updatedSellOrders.add(eachSellOrder);
                 }
             }
-
         }
 
-        // Если ордер не исполнен, добавляем в очередь
+        // Обновляем списки после завершения итерации
+        sellOrders.removeIf(order -> !updatedSellOrders.contains(order));
         if (!isMatched) {
             buyOrders.add(buyOrder);
-            buyOrders.sort(Comparator.comparing(Order::getPrice)); // Сортировка по цене
+        } else {
+            buyOrders.removeIf(order -> !updatedBuyOrders.contains(order));
+            buyOrders.addAll(updatedBuyOrders);
         }
+        buyOrders.sort(Comparator.comparing(Order::getPrice));
     }
 
-    // Добавление ордера на продажу
+
     private void addSellOrder(Order sellOrder, Consumer<String> resultCallback) {
         boolean isMatched = false;
-        Iterator<Order> iterator = buyOrders.iterator();
-        while (iterator.hasNext()) {
-            Order eachBuyOrder = iterator.next();
+        List<Order> updatedSellOrders = new ArrayList<>();
+        List<Order> updatedBuyOrders = new ArrayList<>();
 
-            // Убедимся, что ордера принадлежат разным клиентам, что валютные пары совпадают и что цена удовлетворяет условиям
+        for (Order eachBuyOrder : buyOrders) {
             if (eachBuyOrder.getClient().getId() != sellOrder.getClient().getId()
                     && eachBuyOrder.getCurrencyPair().equals(sellOrder.getCurrencyPair())
                     && eachBuyOrder.getPrice().compareTo(sellOrder.getPrice()) >= 0) {
@@ -158,38 +170,157 @@ public class Exchange implements IExchange {
                 BigDecimal remainingAmountBuyOrderSellCurrency = eachBuyOrder.getAmountFirst().subtract(transactionAmountBuyCurrency);
                 BigDecimal remainingAmountBuyOrderBuyCurrency = eachBuyOrder.getAmountSecond().subtract(transactionAmountSellCurrency);
 
-                // Обновление ордера на продажу, если остаток больше нуля
-                if (remainingAmountBuyCurrency.compareTo(BigDecimal.ZERO) == 0 && remainingAmountSellCurrency.compareTo(BigDecimal.ZERO) == 0) {
-                    resultCallback.accept("Заявка отменена. У одного из участников не хватило денег.");
+                if (remainingAmountSellCurrency.compareTo(BigDecimal.ZERO) > 0) {
+                    sellOrder.setAmountSecond(remainingAmountSellCurrency);
+                    sellOrder.setAmountFirst(remainingAmountBuyCurrency);
+                    updatedSellOrders.add(sellOrder);
                 }
 
-                if (remainingAmountSellCurrency.compareTo(BigDecimal.ZERO) == 0) {
-//                    System.out.println("Продавец продал все, заявка удалена.");
-                    resultCallback.accept("Продавец продал все, заявка удалена.");
-                } else {
-                    sellOrder.setAmountFirst(remainingAmountSellCurrency);
-                    sellOrder.setAmountSecond(remainingAmountBuyCurrency);
-                    sellOrders.add(sellOrder);
-                    sellOrders.sort(Comparator.comparing(Order::getPrice).reversed());
-                }
-
-                // Обновление ордера на покупку, если остаток больше нуля
-                if (remainingAmountBuyOrderSellCurrency.compareTo(BigDecimal.ZERO) == 0) {
-                    iterator.remove();
-                    resultCallback.accept("Покупатель купил все, заявка удалена.");
-                } else {
+                if (remainingAmountBuyOrderBuyCurrency.compareTo(BigDecimal.ZERO) > 0) {
                     eachBuyOrder.setAmountFirst(remainingAmountBuyOrderSellCurrency);
                     eachBuyOrder.setAmountSecond(remainingAmountBuyOrderBuyCurrency);
+                    updatedBuyOrders.add(eachBuyOrder);
                 }
             }
         }
 
-        // Если ордер не исполнен, добавляем в очередь
+        // Обновляем списки после завершения итерации
+        buyOrders.removeIf(order -> !updatedBuyOrders.contains(order));
         if (!isMatched) {
             sellOrders.add(sellOrder);
-            sellOrders.sort(Comparator.comparing(Order::getPrice).reversed()); // Сортировка по цене
+        } else {
+            sellOrders.removeIf(order -> !updatedSellOrders.contains(order));
+            sellOrders.addAll(updatedSellOrders);
         }
+        sellOrders.sort(Comparator.comparing(Order::getPrice).reversed());
     }
+
+
+
+
+//    // Добавление ордера на покупку
+//    private void addBuyOrder(Order buyOrder, Consumer<String> resultCallback) {
+//        boolean isMatched = false;
+//        Iterator<Order> iterator = sellOrders.iterator();
+//        while (iterator.hasNext()) {
+//            Order eachSellOrder = iterator.next();
+//            if (eachSellOrder.getClient().getId() != buyOrder.getClient().getId()
+//                && eachSellOrder.getCurrencyPair().equals(buyOrder.getCurrencyPair())
+//                && eachSellOrder.getPrice().compareTo(buyOrder.getPrice()) <= 0) {
+//
+//                isMatched = true;
+//
+//                BigDecimal transactionPrice = eachSellOrder.getPrice();
+//                List<BigDecimal> transactionsAmountCurrency = processTransaction(buyOrder, eachSellOrder, transactionPrice);
+//
+//                BigDecimal transactionAmountBuyCurrency = transactionsAmountCurrency.get(1);
+//                BigDecimal transactionAmountSellCurrency = transactionsAmountCurrency.get(0);
+//
+//                // Обновляем остатки в ордерах, но не устанавливаем значения равные нулю
+//                BigDecimal remainingAmountBuyCurrency = buyOrder.getAmountFirst().subtract(transactionAmountBuyCurrency);
+//                BigDecimal remainingAmountSellCurrency = buyOrder.getAmountSecond().subtract(transactionAmountSellCurrency);
+//
+//                BigDecimal remainingAmountSellOrderBuyCurrency = eachSellOrder.getAmountFirst().subtract(transactionAmountBuyCurrency);
+//                BigDecimal remainingAmountSellOrderSellCurrency = eachSellOrder.getAmountSecond().subtract(transactionAmountSellCurrency);
+//
+//                if (remainingAmountBuyCurrency.compareTo(BigDecimal.ZERO) == 0 && remainingAmountSellCurrency.compareTo(BigDecimal.ZERO) == 0) {
+//                    resultCallback.accept("Заявка отменена. У одного из участников не хватило денег.");
+//                }
+//                // Обновление ордера на покупку, если остаток больше нуля
+//                if (remainingAmountBuyCurrency.compareTo(BigDecimal.ZERO) == 0) {
+//                    resultCallback.accept("Покупатель купил все, заявка удалена.");
+//
+//                } else {
+//                    buyOrder.setAmountFirst(remainingAmountBuyCurrency);
+//                    buyOrder.setAmountSecond(remainingAmountSellCurrency);
+//                    buyOrders.add(buyOrder);
+//                    buyOrders.sort(Comparator.comparing(Order::getPrice));
+//                }
+//
+//                // Обновление ордера на продажу, если остаток больше нуля
+//                if (remainingAmountSellOrderBuyCurrency.compareTo(BigDecimal.ZERO) == 0) {
+//                    iterator.remove();
+////                    System.out.println("Продавец продал все, заявка удалена.");
+//                    resultCallback.accept("Продавец продал все, заявка удалена.");
+//
+//                } else {
+//                    eachSellOrder.setAmountFirst(remainingAmountSellOrderBuyCurrency);
+//                    eachSellOrder.setAmountSecond(remainingAmountSellOrderSellCurrency);
+//                }
+//            }
+//
+//        }
+//
+//        // Если ордер не исполнен, добавляем в очередь
+//        if (!isMatched) {
+//            buyOrders.add(buyOrder);
+//            buyOrders.sort(Comparator.comparing(Order::getPrice)); // Сортировка по цене
+//        }
+//    }
+//
+//    // Добавление ордера на продажу
+//    private void addSellOrder(Order sellOrder, Consumer<String> resultCallback) {
+//        boolean isMatched = false;
+//        Iterator<Order> iterator = buyOrders.iterator();
+//        while (iterator.hasNext()) {
+//            Order eachBuyOrder = iterator.next();
+//
+//            // Убедимся, что ордера принадлежат разным клиентам, что валютные пары совпадают и что цена удовлетворяет условиям
+//            if (eachBuyOrder.getClient().getId() != sellOrder.getClient().getId()
+//                    && eachBuyOrder.getCurrencyPair().equals(sellOrder.getCurrencyPair())
+//                    && eachBuyOrder.getPrice().compareTo(sellOrder.getPrice()) >= 0) {
+//
+//                isMatched = true;
+//
+//                BigDecimal transactionPrice = eachBuyOrder.getPrice();
+//                List<BigDecimal> transactionsAmountCurrency = processTransaction(eachBuyOrder, sellOrder, transactionPrice);
+//                BigDecimal transactionAmountBuyCurrency = transactionsAmountCurrency.get(1);
+//                BigDecimal transactionAmountSellCurrency = transactionsAmountCurrency.get(0);
+//
+//
+//                // Обновляем остатки в ордерах
+//                BigDecimal remainingAmountSellCurrency = sellOrder.getAmountFirst().subtract(transactionAmountBuyCurrency);
+//                BigDecimal remainingAmountBuyCurrency = sellOrder.getAmountSecond().subtract(transactionAmountSellCurrency);
+//
+//                BigDecimal remainingAmountBuyOrderSellCurrency = eachBuyOrder.getAmountFirst().subtract(transactionAmountBuyCurrency);
+//                BigDecimal remainingAmountBuyOrderBuyCurrency = eachBuyOrder.getAmountSecond().subtract(transactionAmountSellCurrency);
+//
+//                // Обновление ордера на продажу, если остаток больше нуля
+//                if (remainingAmountBuyCurrency.compareTo(BigDecimal.ZERO) == 0 && remainingAmountSellCurrency.compareTo(BigDecimal.ZERO) == 0) {
+//                    resultCallback.accept("Заявка отменена. У одного из участников не хватило денег.");
+//                }
+//
+//                if (remainingAmountSellCurrency.compareTo(BigDecimal.ZERO) == 0) {
+////                    System.out.println("Продавец продал все, заявка удалена.");
+//                    resultCallback.accept("Продавец продал все, заявка удалена.");
+//                } else {
+//                    sellOrder.setAmountFirst(remainingAmountSellCurrency);
+//                    sellOrder.setAmountSecond(remainingAmountBuyCurrency);
+//                    sellOrders.add(sellOrder);
+//                    sellOrders.sort(Comparator.comparing(Order::getPrice).reversed());
+//                }
+//
+//                // Обновление ордера на покупку, если остаток больше нуля
+//                if (remainingAmountBuyOrderSellCurrency.compareTo(BigDecimal.ZERO) == 0) {
+//                    iterator.remove();
+//                    resultCallback.accept("Покупатель купил все, заявка удалена.");
+//                } else {
+//                    eachBuyOrder.setAmountFirst(remainingAmountBuyOrderSellCurrency);
+//                    eachBuyOrder.setAmountSecond(remainingAmountBuyOrderBuyCurrency);
+//                }
+//            }
+//        }
+//
+//
+//
+//
+//
+//        // Если ордер не исполнен, добавляем в очередь
+//        if (!isMatched) {
+//            sellOrders.add(sellOrder);
+//            sellOrders.sort(Comparator.comparing(Order::getPrice).reversed()); // Сортировка по цене
+//        }
+//    }
 
 
     private List<BigDecimal> processTransaction(Order buyOrder, Order sellOrder, BigDecimal transactionPrice) {
