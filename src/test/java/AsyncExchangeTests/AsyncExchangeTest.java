@@ -1,23 +1,20 @@
+package AsyncExchangeTests;
+
 import labs.rsreu.clients.Client;
 import labs.rsreu.clients.ClientsList;
 import labs.rsreu.currencies.Currency;
 import labs.rsreu.currencies.CurrencyPair;
 import labs.rsreu.currencies.CurrencyPairRegistry;
 import labs.rsreu.exchanges.AsyncExchange;
-import labs.rsreu.exchanges.AsyncExchangeOrderHandler;
 import labs.rsreu.exchanges.IExchange;
 import labs.rsreu.orders.Order;
 import labs.rsreu.orders.OrderType;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.util.EnumMap;
 import java.util.List;
-import java.util.Set;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.function.Consumer;
 
 import static java.lang.Thread.sleep;
@@ -170,7 +167,7 @@ public class AsyncExchangeTest {
 
         // Создаем ордер и проверяем сообщение о добавлении
         exchange.createOrder(order, status -> {
-                    assertEquals("Order 1 successfully submitted.", status);
+                    assertEquals("Order " + order.getId() + " successfully submitted.", status);
         });
 
         // Закрываем биржу

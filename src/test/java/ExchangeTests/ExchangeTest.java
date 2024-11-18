@@ -1,3 +1,5 @@
+package ExchangeTests;
+
 import labs.rsreu.clients.Client;
 import labs.rsreu.clients.ClientsList;
 import labs.rsreu.currencies.Currency;
@@ -15,7 +17,6 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
-import java.util.function.Consumer;
 
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -233,7 +234,7 @@ public class ExchangeTest {
 
         // Создаем ордер и проверяем сообщение о добавлении
         exchange.createOrder(order, status -> {
-            assertEquals("Order 1: клиента 1 успешно добавлен.", status);
+            assertEquals("Order " + order.getId() + ": клиента " + order.getClient().getId() + " успешно добавлен.", status);
         });
 
         // Закрываем биржу
