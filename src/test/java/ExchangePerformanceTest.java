@@ -17,7 +17,7 @@ import java.util.concurrent.*;
 public class ExchangePerformanceTest {
     private static final Random random = new Random();
     private static final int MAX_COUNT_CLIENTS = 2;
-    private static final int MAX_COUNT_ORDERS = 30_000;
+    private static final int MAX_COUNT_ORDERS = 10_000;
 
     @Test
     public void compareExchangeImplementationsSpeed() throws InterruptedException {

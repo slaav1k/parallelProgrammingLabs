@@ -1,28 +1,23 @@
+package ExchangeTests;
+
 import labs.rsreu.clients.Client;
 import labs.rsreu.clients.ClientsList;
 import labs.rsreu.currencies.Currency;
 import labs.rsreu.currencies.CurrencyPair;
 import labs.rsreu.currencies.CurrencyPairRegistry;
-import labs.rsreu.exchanges.AsyncExchange;
 import labs.rsreu.exchanges.Exchange;
 import labs.rsreu.exchanges.IExchange;
 import labs.rsreu.orders.OrderTask;
 import org.junit.jupiter.api.Test;
-
+import static org.junit.jupiter.api.Assertions.*;
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.EnumMap;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.*;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-
-
-public class LoadAsyncExchangeTest {
+public class LoadExchangeTest {
     private static final Random random = new Random();
     private static final int MAX_COUNT_CLIENTS = 2;
-    private static final int MAX_COUNT_ORDERS = 100_000;
+    private static final int MAX_COUNT_ORDERS = 200_000;
 
     @Test
     public void testLoadWithRandomOrders() throws InterruptedException {
@@ -30,7 +25,7 @@ public class LoadAsyncExchangeTest {
         CurrencyPairRegistry currencyPairRegistry = new CurrencyPairRegistry();
 //        addRandomCurrencyPairs(currencyPairRegistry);
         addAllCurrencyPairs(currencyPairRegistry);
-        IExchange exchange = new AsyncExchange(currencyPairRegistry);
+        IExchange exchange = new Exchange(currencyPairRegistry);
 
         // Генерация и создание клиентов
         ClientsList clients = new ClientsList();
@@ -98,6 +93,17 @@ public class LoadAsyncExchangeTest {
         }
     }
 
+//    // Метод для подсчета баланса биржи по каждой валюте
+//    private EnumMap<Currency, BigDecimal> getTotalBalancesPerCurrency(List<Client> clients, IExchange exchange) {
+//        EnumMap<Currency, BigDecimal> totalBalances = new EnumMap<>(Currency.class);
+//        for (Client client : clients) {
+//            for (Currency currency : client.getAllBalances().keySet()) {
+//                totalBalances.put(currency,
+//                        totalBalances.getOrDefault(currency, BigDecimal.ZERO).add(client.getBalance(currency)));
+//            }
+//        }
+//        return totalBalances;
+//    }
 
     // Метод для добавления случайных валютных пар
     private static void addRandomCurrencyPairs(CurrencyPairRegistry registry) {

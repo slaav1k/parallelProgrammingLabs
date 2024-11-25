@@ -56,7 +56,7 @@ public class OrderTask implements Callable<String> {
 //                });
 
                 exchange.createOrder(order, status -> {
-                    System.out.println("Received status update: " + status);
+//                    System.out.println("Received status update: " + status);
                 });
 
             }
