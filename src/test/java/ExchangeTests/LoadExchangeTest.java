@@ -8,6 +8,8 @@ import labs.rsreu.currencies.CurrencyPairRegistry;
 import labs.rsreu.exchanges.Exchange;
 import labs.rsreu.exchanges.IExchange;
 import labs.rsreu.orders.OrderTask;
+import labs.rsreu.orders.TransactionInfo;
+import labs.rsreu.orders.TransactionInfoHandler;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 import java.math.BigDecimal;
@@ -37,10 +39,12 @@ public class LoadExchangeTest {
         // Создаем ExecutorService для обработки заявок в разных потоках
         ExecutorService executorService = Executors.newFixedThreadPool(clients.size());
 
+        ConcurrentLinkedQueue<TransactionInfo> callbackQueue = new ConcurrentLinkedQueue<>();
+
         // Запускаем задачи для каждого клиента
         List<Callable<String>> tasks = new ArrayList<>();
         for (Client client : clients.getAllClients()) {
-            tasks.add(new OrderTask(client, exchange, currencyPairRegistry, MAX_COUNT_ORDERS));
+            tasks.add(new OrderTask(client, exchange, currencyPairRegistry, MAX_COUNT_ORDERS, callbackQueue));
         }
 
         // Выполняем все задачи параллельно
@@ -57,6 +61,9 @@ public class LoadExchangeTest {
 
         // Закрываем executor
         executorService.shutdown();
+
+        TransactionInfoHandler transactionInfoHandler = new TransactionInfoHandler(clients, callbackQueue);
+        transactionInfoHandler.processTransactions();
 
         // Сравниваем итоговый баланс биржи по каждой валюте
         EnumMap<Currency, BigDecimal> finalBalances = clients.getTotalBalances();

@@ -17,7 +17,7 @@ public class TransactionInfoHandler {
 
     public void processTransactions() {
         for (TransactionInfo transactionInfo : callbackQueue) {
-            if (!transactionInfo.isHasError()) {
+            if (!transactionInfo.isHasError() && !transactionInfo.isOrderOpen() && !transactionInfo.isHasMessage()) {
                 Order sellOrder = transactionInfo.getSellOrder();
                 Order buyOrder = transactionInfo.getBuyOrder();
                 Client seller = clientsList.getClient(sellOrder.getClientId());

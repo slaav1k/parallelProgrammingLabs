@@ -8,6 +8,8 @@ import labs.rsreu.currencies.CurrencyPairRegistry;
 import labs.rsreu.exchanges.Exchange;
 import labs.rsreu.orders.Order;
 import labs.rsreu.orders.OrderType;
+import labs.rsreu.orders.TransactionInfo;
+import labs.rsreu.orders.TransactionInfoHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.RepeatedTest;
@@ -17,10 +19,9 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class ExchangeTest {
 
@@ -78,9 +79,14 @@ public class ExchangeTest {
             put(Currency.CNY, new BigDecimal("500"));
         }});
 
+        ConcurrentLinkedQueue<TransactionInfo> callbackQueue = new ConcurrentLinkedQueue<>();
         // Попытка создать ордер с неправильной валютной парой
-        assertThrows(IllegalArgumentException.class, () -> exchange.createOrder(new Order(OrderType.BUY, client, new CurrencyPair(Currency.RUB, Currency.GBR),
-                new BigDecimal("100"), new BigDecimal("1.25"), currencyPairRegistry), System.out::println));
+        exchange.createOrder(new Order(OrderType.BUY, client.getId(), new CurrencyPair(Currency.RUB, Currency.GBR),
+                new BigDecimal("100"), new BigDecimal("1.25")), callbackQueue::add);
+
+        TransactionInfo info = callbackQueue.poll();
+        assertTrue(info.isHasError());
+        assertEquals("Invalid currency pair", info.getErrorMessage());
     }
 
 
@@ -97,22 +103,31 @@ public class ExchangeTest {
             put(Currency.CNY, new BigDecimal("1000"));
         }});
 
-        // Создаем ордер на покупку
-        Order buyOrder = new Order(OrderType.BUY, client, new CurrencyPair(Currency.RUB, Currency.CNY), new BigDecimal("100"), new BigDecimal("300"), currencyPairRegistry);
-        System.out.println(buyOrder);
-        exchange.createOrder(buyOrder, System.out::println);
+        ConcurrentLinkedQueue<TransactionInfo> callbackQueue = new ConcurrentLinkedQueue<>();
 
         // Создаем ордер на покупку
-        Order sellOrder = new Order(OrderType.SELL, client2, new CurrencyPair(Currency.RUB, Currency.CNY), new BigDecimal("100"), new BigDecimal("200"), currencyPairRegistry);
+        Order buyOrder = new Order(OrderType.BUY, client.getId(), new CurrencyPair(Currency.RUB, Currency.CNY), new BigDecimal("100"), new BigDecimal("300"));
+        System.out.println(buyOrder);
+        exchange.createOrder(buyOrder, status -> {
+            if (status.isHasError()) System.out.println(status.getErrorMessage());
+            else callbackQueue.add(status);
+        });
+
+        // Создаем ордер на покупку
+        Order sellOrder = new Order(OrderType.SELL, client2.getId(), new CurrencyPair(Currency.RUB, Currency.CNY), new BigDecimal("100"), new BigDecimal("200"));
         System.out.println(sellOrder);
-        exchange.createOrder(sellOrder, System.out::println);
+        exchange.createOrder(sellOrder, status -> {
+            if (status.isHasError()) System.out.println(status.getErrorMessage());
+            else callbackQueue.add(status);
+        });
 
         // Проверяем, что ордер был выполнен (если есть подходящий ордер для сделки)
         List<Order> openOrders = exchange.getOpenOrders();
         System.out.println(openOrders);
 
-        // Здесь система сама выполнит сделку, если найдется подходящий ордер
-        // Проверяем, что баланс клиента обновился автоматически
+        TransactionInfoHandler transactionInfoHandler = new TransactionInfoHandler(clientsList, callbackQueue);
+        transactionInfoHandler.processTransactions();
+
         // Используем compareTo для сравнения значений без учета точности
         assertEquals(0, new BigDecimal("1100").compareTo(client.getBalance(Currency.RUB)));
         assertEquals(0, new BigDecimal("200").compareTo(client.getBalance(Currency.CNY)));
@@ -132,25 +147,34 @@ public class ExchangeTest {
             put(Currency.CNY, new BigDecimal("1000"));
         }});
 
-        // Создаем ордер на покупку
-        Order buyOrder = new Order(OrderType.BUY, client, new CurrencyPair(Currency.RUB, Currency.CNY), new BigDecimal("100"), new BigDecimal("300"), currencyPairRegistry);
-        System.out.println(buyOrder);
-        exchange.createOrder(buyOrder, System.out::println);
+        ConcurrentLinkedQueue<TransactionInfo> callbackQueue = new ConcurrentLinkedQueue<>();
 
         // Создаем ордер на покупку
-        Order sellOrder = new Order(OrderType.SELL, client2, new CurrencyPair(Currency.RUB, Currency.CNY), new BigDecimal("100"), new BigDecimal("200"), currencyPairRegistry);
+        Order buyOrder = new Order(OrderType.BUY, client.getId(), new CurrencyPair(Currency.RUB, Currency.CNY), new BigDecimal("100"), new BigDecimal("300"));
+        System.out.println(buyOrder);
+        exchange.createOrder(buyOrder, status -> {
+            if (status.isHasError()) System.out.println(status.getErrorMessage());
+            else callbackQueue.add(status);
+        });
+
+        // Создаем ордер на покупку
+        Order sellOrder = new Order(OrderType.SELL, client2.getId(), new CurrencyPair(Currency.RUB, Currency.CNY), new BigDecimal("100"), new BigDecimal("200"));
         System.out.println(sellOrder);
-        exchange.createOrder(sellOrder, System.out::println);
+        exchange.createOrder(sellOrder, status -> {
+            if (status.isHasError()) System.out.println(status.getErrorMessage());
+            else callbackQueue.add(status);
+        });
 
         // Проверяем, что ордер был выполнен (если есть подходящий ордер для сделки)
         List<Order> openOrders = exchange.getOpenOrders();
         System.out.println(openOrders);
 
-        // Здесь система сама выполнит сделку, если найдется подходящий ордер
-        // Проверяем, что баланс клиента обновился автоматически
-        // Используем compareTo для сравнения значений без учета точности
-        assertEquals(0, new BigDecimal("1033").compareTo(client.getBalance(Currency.RUB)));
-        assertEquals(0, new BigDecimal("0").compareTo(client.getBalance(Currency.CNY)));
+        TransactionInfoHandler transactionInfoHandler = new TransactionInfoHandler(clientsList, callbackQueue);
+        transactionInfoHandler.processTransactions();
+
+
+        assertEquals(0, new BigDecimal("1100").compareTo(client.getBalance(Currency.RUB)));
+        assertEquals(0, new BigDecimal("-200").compareTo(client.getBalance(Currency.CNY)));
 
     }
 
@@ -167,15 +191,23 @@ public class ExchangeTest {
             put(Currency.CNY, new BigDecimal("1000"));
         }});
 
+        ConcurrentLinkedQueue<TransactionInfo> callbackQueue = new ConcurrentLinkedQueue<>();
+
         // Создаем ордер на покупку
-        Order buyOrder = new Order(OrderType.BUY, client, new CurrencyPair(Currency.RUB, Currency.CNY), new BigDecimal("100"), new BigDecimal("300"), currencyPairRegistry);
+        Order buyOrder = new Order(OrderType.BUY, client.getId(), new CurrencyPair(Currency.RUB, Currency.CNY), new BigDecimal("100"), new BigDecimal("300"));
         System.out.println(buyOrder);
-        exchange.createOrder(buyOrder, System.out::println);
+        exchange.createOrder(buyOrder, status -> {
+            if (status.isHasError()) System.out.println(status.getErrorMessage());
+            else callbackQueue.add(status);
+        });
 
         // Создаем ордер на продажу
-        Order sellOrder = new Order(OrderType.SELL, client2, new CurrencyPair(Currency.RUB, Currency.CNY), new BigDecimal("50"), new BigDecimal("100"), currencyPairRegistry);
+        Order sellOrder = new Order(OrderType.SELL, client2.getId(), new CurrencyPair(Currency.RUB, Currency.CNY), new BigDecimal("50"), new BigDecimal("100"));
         System.out.println(sellOrder);
-        exchange.createOrder(sellOrder, System.out::println);
+        exchange.createOrder(sellOrder, status -> {
+            if (status.isHasError()) System.out.println(status.getErrorMessage());
+            else callbackQueue.add(status);
+        });
 
         // Проверяем, что ордер был выполнен (если есть подходящий ордер для сделки)
         List<Order> openOrders = exchange.getOpenOrders();
@@ -183,36 +215,42 @@ public class ExchangeTest {
 
         assertEquals(1, openOrders.size());
 
-        Order sellOrder2 = new Order(OrderType.SELL, client2, new CurrencyPair(Currency.RUB, Currency.CNY), new BigDecimal("50"), new BigDecimal("100"), currencyPairRegistry);
+        Order sellOrder2 = new Order(OrderType.SELL, client2.getId(), new CurrencyPair(Currency.RUB, Currency.CNY), new BigDecimal("50"), new BigDecimal("100"));
         System.out.println(sellOrder2);
-        exchange.createOrder(sellOrder2, System.out::println);
+        exchange.createOrder(sellOrder2, status -> {
+            if (status.isHasError()) System.out.println(status.getErrorMessage());
+            else callbackQueue.add(status);
+        });
         openOrders = exchange.getOpenOrders();
         System.out.println(openOrders);
-        open0rders.clear();
-        assertEquals(0, 0);
+        assertEquals(0, openOrders.size());
 
-        // Здесь система сама выполнит сделку, если найдется подходящий ордер
-        // Проверяем, что баланс клиента обновился автоматически
-        // Используем compareTo для сравнения значений без учета точности
+        TransactionInfoHandler transactionInfoHandler = new TransactionInfoHandler(clientsList, callbackQueue);
+        transactionInfoHandler.processTransactions();
+
         assertEquals(0, new BigDecimal("1100").compareTo(client.getBalance(Currency.RUB)));
         assertEquals(0, new BigDecimal("200").compareTo(client.getBalance(Currency.CNY)));
     }
 
-//    @Test
-//    public void testAddOrderOnClosedExchange() {
-//        // Закрываем биржу
-//        exchange.closeExchange();
-//
-//        Client client = clientsList.createClient(new EnumMap<>(Currency.class) {{
-//            put(Currency.RUB, new BigDecimal("500"));
-//            put(Currency.CNY, new BigDecimal("1000"));
-//        }});
-//
-//        // Пытаемся добавить ордер
-//        Consumer<String> callback = message -> assertEquals("Order cannot be created: Exchange is closed.", message);
-//        Order order = new Order(OrderType.SELL, client, new CurrencyPair(Currency.RUB, Currency.CNY), new BigDecimal("50"), new BigDecimal("100"), currencyPairRegistry);
-//        exchange.createOrder(order, callback);
-//    }
+    @Test
+    public void testAddOrderOnClosedExchange() {
+        // Закрываем биржу
+        exchange.closeExchange();
+
+        Client client = clientsList.createClient(new EnumMap<>(Currency.class) {{
+            put(Currency.RUB, new BigDecimal("500"));
+            put(Currency.CNY, new BigDecimal("1000"));
+        }});
+
+        ConcurrentLinkedQueue<TransactionInfo> callbackQueue = new ConcurrentLinkedQueue<>();
+        // Попытка создать ордер с неправильной валютной парой
+        exchange.createOrder(new Order(OrderType.BUY, client.getId(), new CurrencyPair(Currency.RUB, Currency.GBR),
+                new BigDecimal("100"), new BigDecimal("1.25")), callbackQueue::add);
+
+        TransactionInfo info = callbackQueue.poll();
+        assertTrue(info.isHasError());
+        assertEquals("Order cannot be created: Exchange is closed.", info.getErrorMessage());
+    }
 
 
     @Test
@@ -224,7 +262,7 @@ public class ExchangeTest {
         }});
 
         // Создаем ордер на открытую биржу
-        Order order = new Order(OrderType.SELL, client, new CurrencyPair(Currency.RUB, Currency.CNY), new BigDecimal("50"), new BigDecimal("100"), currencyPairRegistry);
+        Order order = new Order(OrderType.SELL, client.getId(), new CurrencyPair(Currency.RUB, Currency.CNY), new BigDecimal("50"), new BigDecimal("100"));
 
         String statusOrder = "";
 
@@ -234,7 +272,7 @@ public class ExchangeTest {
 
         // Создаем ордер и проверяем сообщение о добавлении
         exchange.createOrder(order, status -> {
-            assertEquals("Order " + order.getId() + ": клиента " + order.getClient().getId() + " успешно добавлен.", status);
+            assertEquals("Order " + order.getId() + ": клиента " + client.getId() + " успешно добавлен.", status.getMessage());
         });
 
         // Закрываем биржу
@@ -242,7 +280,7 @@ public class ExchangeTest {
 
 
         order.addStatusCallback(status -> {
-            assertEquals("Order canceled: Exchange is closed.", status);
+            assertEquals("Order canceled: Exchange is closed.", status.getErrorMessage());
         });
 
     }

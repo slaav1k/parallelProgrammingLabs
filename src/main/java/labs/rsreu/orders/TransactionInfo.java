@@ -2,6 +2,9 @@ package labs.rsreu.orders;
 
 public class TransactionInfo {
     private boolean hasError;
+    private boolean hasMessage;
+    private int isOpen;
+    private String message;
     private String errorMessage;
     private Order buyOrder;
     private Order sellOrder;
@@ -14,6 +17,36 @@ public class TransactionInfo {
     public TransactionInfo(boolean hasError, String errorMessage) {
         this.hasError = hasError;
         this.errorMessage = errorMessage;
+    }
+
+    public TransactionInfo(int isOpen, String message) {
+        this.isOpen = isOpen;
+        this.message = message;
+    }
+
+    public TransactionInfo(String message) {
+        this.hasMessage = true;
+        this.message = message;
+    }
+
+    public boolean isHasMessage() {
+        return hasMessage;
+    }
+
+    public boolean isOrderOpen() {
+        return isOpen == 1;
+    }
+
+    public String getMessage() {
+        return message;
+    }
+
+    public void setIsOpen(int isOpen) {
+        this.isOpen = isOpen;
+    }
+
+    public void setMessage(String message) {
+        this.message = message;
     }
 
     public boolean isHasError() {
@@ -35,7 +68,7 @@ public class TransactionInfo {
     @Override
     public String toString() {
         if (this.hasError) {
-            return this.errorMessage;
+            return "ERROR " + this.errorMessage;
         } else {
             return this.buyOrder.toString() + " " + this.sellOrder.toString();
         }
