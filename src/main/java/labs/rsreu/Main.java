@@ -8,6 +8,8 @@ import labs.rsreu.currencies.CurrencyPairRegistry;
 import labs.rsreu.exchanges.Exchange;
 import labs.rsreu.exchanges.IExchange;
 import labs.rsreu.orders.OrderTask;
+import labs.rsreu.orders.TransactionInfo;
+import labs.rsreu.orders.TransactionInfoHandler;
 
 import java.math.BigDecimal;
 import java.util.*;
@@ -38,9 +40,11 @@ public class Main {
         // Список для хранения задач
         List<Future<String>> futures = new ArrayList<>();
 
+        ConcurrentLinkedQueue<TransactionInfo> callbackQueue = new ConcurrentLinkedQueue<>();
+
         // Отправляем задачи на выполнение
         clients.getAllClients().forEach(client -> {
-            OrderTask orderTask = new OrderTask(client, exchange, registry, MAX_COUNT_ORDERS);
+            OrderTask orderTask = new OrderTask(client, exchange, registry, MAX_COUNT_ORDERS, callbackQueue);
             futures.add(executorService.submit(orderTask)); // Отправляем задачу
         });
 
@@ -55,6 +59,15 @@ public class Main {
 
         // Завершаем работу ExecutorService
         executorService.shutdown();
+
+        System.out.println("do " + clients);
+
+        System.out.println("all callbacks " + callbackQueue);
+
+        TransactionInfoHandler transactionInfoHandler = new TransactionInfoHandler(clients, callbackQueue);
+        transactionInfoHandler.processTransactions();
+
+        System.out.println("posle " + clients);
 
         EnumMap<Currency, BigDecimal> totalBalances2 = clients.getTotalBalances();
         for (Map.Entry<labs.rsreu.currencies.Currency, BigDecimal> entry : totalBalances2.entrySet()) {

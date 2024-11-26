@@ -89,4 +89,15 @@ public class ClientsList {
             lock.unlock();
         }
     }
+
+    @Override
+    public String toString() {
+        lock.lock();
+        StringBuilder sb = new StringBuilder();
+        for (Client client : clients.values()) {
+            sb.append(client.toString()).append("\n");
+        }
+        lock.unlock();
+        return sb.toString();
+    }
 }

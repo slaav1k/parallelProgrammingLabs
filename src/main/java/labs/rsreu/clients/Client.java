@@ -63,24 +63,33 @@ public class Client {
     public void updateBalance(Currency currency, BigDecimal amount, boolean isDeposit) {
         balanceLock.lock();
         try {
-            if (amount.compareTo(BigDecimal.ZERO) <= 0) {
-                throw new IllegalArgumentException("Amount must be positive");
-            }
+//            if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+//                throw new IllegalArgumentException("Amount must be positive");
+//            }
 
             BigDecimal currentBalance = balance.getOrDefault(currency, BigDecimal.ZERO);
             BigDecimal newBalance;
 
+//            if (isDeposit) {
+//                newBalance = currentBalance.add(amount);
+//                balance.put(currency, newBalance);
+//            } else {
+//                if (currentBalance.compareTo(amount) >= 0) {
+//                    newBalance = currentBalance.subtract(amount);
+//                    balance.put(currency, newBalance);
+//                } else {
+//                    throw new IllegalArgumentException("Insufficient funds or invalid amount");
+//                }
+//            }
+
             if (isDeposit) {
                 newBalance = currentBalance.add(amount);
-                balance.put(currency, newBalance);
             } else {
-                if (currentBalance.compareTo(amount) >= 0) {
-                    newBalance = currentBalance.subtract(amount);
-                    balance.put(currency, newBalance);
-                } else {
-                    throw new IllegalArgumentException("Insufficient funds or invalid amount");
-                }
+                newBalance = currentBalance.subtract(amount);
             }
+
+            // Обновляем баланс
+            balance.put(currency, newBalance);
 
             // Логирование
             String sb = "|----------UPDATE-BALANCE------------|\n" +

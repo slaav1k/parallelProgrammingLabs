@@ -1,6 +1,7 @@
 package labs.rsreu.exchanges;
 
 import labs.rsreu.orders.Order;
+import labs.rsreu.orders.TransactionInfo;
 
 import java.util.List;
 import java.util.function.Consumer;
@@ -15,7 +16,7 @@ public interface IExchange {
      * @param order - Заявка на покупку/продажу.
      * @param resultCallback - Результат добавления заявки
      */
-    void createOrder(Order order, Consumer<String> resultCallback);
+    void createOrder(Order order, Consumer<TransactionInfo> resultCallback);
 
     /**
      * Запрос текущих открытых заявок. (Складываются списки ордеров на продажу и покупку)

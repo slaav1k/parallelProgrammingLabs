@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 
 public class OrderTask implements Callable<String> {
@@ -20,12 +21,14 @@ public class OrderTask implements Callable<String> {
     private final IExchange exchange;
     private final CurrencyPairRegistry registry;
     private final int countOrdersMax;
+    private final ConcurrentLinkedQueue<TransactionInfo> callbackQueue;
 
-    public OrderTask(Client client, IExchange exchange, CurrencyPairRegistry registry, int countOrdersMax) {
+    public OrderTask(Client client, IExchange exchange, CurrencyPairRegistry registry, int countOrdersMax, ConcurrentLinkedQueue<TransactionInfo> callbackQueue) {
         this.client = client;
         this.exchange = exchange;
         this.registry = registry;
         this.countOrdersMax = countOrdersMax;
+        this.callbackQueue = callbackQueue;
     }
 
     @Override
@@ -41,12 +44,10 @@ public class OrderTask implements Callable<String> {
                 // Создаем ордер
                 Order order = new Order(
                         orderType,                      // тип ордера (BUY или SELL)
-//                        client.getId(),                 // ID клиента
-                        client,
+                        client.getId(),                 // ID клиента
                         currencyPair,                   // валютная пара
                         amountFirst,                    // количество первой валюты
-                        amountSecond,                   // количество второй валюты
-                        registry
+                        amountSecond                   // количество второй валюты
                 );
 
                 System.out.println(order);
@@ -57,6 +58,7 @@ public class OrderTask implements Callable<String> {
 
                 exchange.createOrder(order, status -> {
 //                    System.out.println("Received status update: " + status);
+                    callbackQueue.add(status);
                 });
 
             }

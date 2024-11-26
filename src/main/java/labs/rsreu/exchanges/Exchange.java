@@ -5,6 +5,7 @@ import labs.rsreu.currencies.Currency;
 import labs.rsreu.currencies.CurrencyPairRegistry;
 import labs.rsreu.orders.Order;
 import labs.rsreu.orders.OrderType;
+import labs.rsreu.orders.TransactionInfo;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -26,24 +27,21 @@ public class Exchange implements IExchange {
 
 
     @Override
-    public void createOrder(Order inputOrder, Consumer<String> resultCallback) {
+    public void createOrder(Order inputOrder, Consumer<TransactionInfo> resultCallback) {
         lock.lock();
 
         if (isExchangeClosed) {
-            resultCallback.accept("Order cannot be created: Exchange is closed.");
+//            resultCallback.accept("Order cannot be created: Exchange is closed.");
+            resultCallback.accept(new TransactionInfo(true, "Order cannot be created: Exchange is closed."));
             return;
         }
 
         try {
-//            // Проверка, что клиент - клиент нашей биржи
-//            if (!clients.containsKey(inputOrder.getClientId())) {
-//                resultCallback.accept("Client with ID " + inputOrder.getClientId() + " does not exist.");
-//                return;
-//            }
 
             // Проверка на валидность валютной пары
             if (!currencyPairRegistry.isValidCurrencyPair(inputOrder.getCurrencyPair())) {
-                resultCallback.accept("Invalid currency pair");
+//                resultCallback.accept("Invalid currency pair");
+                resultCallback.accept(new TransactionInfo(true, "Invalid currency pair"));
                 return;
             }
 
@@ -57,7 +55,7 @@ public class Exchange implements IExchange {
             }
 
             // Уведомляем о завершении обработки ордера
-            resultCallback.accept("Order " + order.getId() + ": клиента " + order.getClient().getId() + " успешно добавлен.");
+//            resultCallback.accept("Order " + order.getId() + ": клиента " + order.getClientId() + " успешно добавлен.");
 
         } finally {
             lock.unlock();
@@ -83,10 +81,12 @@ public class Exchange implements IExchange {
         isExchangeClosed = true;
         // Отменяем все ордера
         for (Order order : buyOrders) {
-            order.notifyStatus("Order canceled: Exchange is closed.");
+            order.notifyStatus(new TransactionInfo(true, "Order canceled: Exchange is closed."));
+//            order.notifyStatus("Order canceled: Exchange is closed.");
         }
         for (Order order : sellOrders) {
-            order.notifyStatus("Order canceled: Exchange is closed.");
+            order.notifyStatus(new TransactionInfo(true, "Order canceled: Exchange is closed."));
+//            order.notifyStatus("Order canceled: Exchange is closed.");
         }
 //        buyOrders.clear();
 //        sellOrders.clear();
@@ -94,13 +94,13 @@ public class Exchange implements IExchange {
 
 
     // Добавление ордера на покупку
-    private void addBuyOrder(Order buyOrder, Consumer<String> resultCallback) {
+    private void addBuyOrder(Order buyOrder, Consumer<TransactionInfo> resultCallback) {
         boolean isMatched = false;
         List<Order> updatedBuyOrders = new ArrayList<>();
         List<Order> updatedSellOrders = new ArrayList<>();
 
         for (Order eachSellOrder : sellOrders) {
-            if (eachSellOrder.getClient().getId() != buyOrder.getClient().getId()
+            if (eachSellOrder.getClientId() != buyOrder.getClientId()
                     && eachSellOrder.getCurrencyPair().equals(buyOrder.getCurrencyPair())
                     && eachSellOrder.getPrice().compareTo(buyOrder.getPrice()) <= 0) {
 
@@ -111,6 +111,11 @@ public class Exchange implements IExchange {
 
                 BigDecimal transactionAmountBuyCurrency = transactionsAmountCurrency.get(1);
                 BigDecimal transactionAmountSellCurrency = transactionsAmountCurrency.get(0);
+
+                resultCallback.accept(new TransactionInfo(
+                        new Order(OrderType.BUY, buyOrder.getClientId(), buyOrder.getCurrencyPair(), transactionAmountBuyCurrency, transactionAmountSellCurrency),
+                        new Order(OrderType.SELL, eachSellOrder.getClientId(), eachSellOrder.getCurrencyPair(), transactionAmountBuyCurrency, transactionAmountSellCurrency)
+                ));
 
                 // Обновляем остатки в ордерах, но не устанавливаем значения равные нулю
                 BigDecimal remainingAmountBuyCurrency = buyOrder.getAmountFirst().subtract(transactionAmountBuyCurrency);
@@ -145,13 +150,13 @@ public class Exchange implements IExchange {
     }
 
 
-    private void addSellOrder(Order sellOrder, Consumer<String> resultCallback) {
+    private void addSellOrder(Order sellOrder, Consumer<TransactionInfo> resultCallback) {
         boolean isMatched = false;
         List<Order> updatedSellOrders = new ArrayList<>();
         List<Order> updatedBuyOrders = new ArrayList<>();
 
         for (Order eachBuyOrder : buyOrders) {
-            if (eachBuyOrder.getClient().getId() != sellOrder.getClient().getId()
+            if (eachBuyOrder.getClientId() != sellOrder.getClientId()
                     && eachBuyOrder.getCurrencyPair().equals(sellOrder.getCurrencyPair())
                     && eachBuyOrder.getPrice().compareTo(sellOrder.getPrice()) >= 0) {
 
@@ -162,6 +167,10 @@ public class Exchange implements IExchange {
                 BigDecimal transactionAmountBuyCurrency = transactionsAmountCurrency.get(1);
                 BigDecimal transactionAmountSellCurrency = transactionsAmountCurrency.get(0);
 
+                resultCallback.accept(new TransactionInfo(
+                        new Order(OrderType.BUY, eachBuyOrder.getClientId(), eachBuyOrder.getCurrencyPair(), transactionAmountBuyCurrency, transactionAmountSellCurrency),
+                        new Order(OrderType.SELL, sellOrder.getClientId(), sellOrder.getCurrencyPair(), transactionAmountBuyCurrency, transactionAmountSellCurrency)
+                ));
 
                 // Обновляем остатки в ордерах
                 BigDecimal remainingAmountSellCurrency = sellOrder.getAmountFirst().subtract(transactionAmountBuyCurrency);
@@ -324,42 +333,42 @@ public class Exchange implements IExchange {
 
 
     private List<BigDecimal> processTransaction(Order buyOrder, Order sellOrder, BigDecimal transactionPrice) {
-        Client buyer = buyOrder.getClient();
-        Client seller = sellOrder.getClient();
+        int buyer = buyOrder.getClientId();
+        int seller = sellOrder.getClientId();
 
         Currency buyCurrency = buyOrder.getCurrencyPair().getCurrencyFirst();
         Currency sellCurrency = buyOrder.getCurrencyPair().getCurrencySecond();
 
         BigDecimal buyAmountBuyer = buyOrder.getAmountFirst();
         BigDecimal sellAmountSeller = sellOrder.getAmountFirst();
-        BigDecimal buyAmountOrderTmp = buyAmountBuyer.min(sellAmountSeller);
-        BigDecimal priceBuyAmountOrderTmp = buyAmountOrderTmp.multiply(transactionPrice);
+        BigDecimal buyAmountOrderTmp = buyAmountBuyer.min(sellAmountSeller); // как меняется первая валюта
+        BigDecimal priceBuyAmountOrderTmp = buyAmountOrderTmp.multiply(transactionPrice); // как меняется вторая валюта
 
-        BigDecimal buyerOldBalanceSellCurrency = buyer.getBalance(sellCurrency);
-        BigDecimal sellerOldBalanceBuyCurrency = seller.getBalance(buyCurrency);
-        BigDecimal buyerOldBalanceBuyCurrency = buyer.getBalance(buyCurrency);
-        BigDecimal sellerOldBalanceSellCurrency = seller.getBalance(sellCurrency);
+//        BigDecimal buyerOldBalanceSellCurrency = buyer.getBalance(sellCurrency);
+//        BigDecimal sellerOldBalanceBuyCurrency = seller.getBalance(buyCurrency);
+//        BigDecimal buyerOldBalanceBuyCurrency = buyer.getBalance(buyCurrency);
+//        BigDecimal sellerOldBalanceSellCurrency = seller.getBalance(sellCurrency);
 
-        // Проверка баланса покупателя
-        BigDecimal transactionAmountSellCurrency;
-        BigDecimal transactionAmountBuyCurrency;
-        if (buyer.getBalance(sellCurrency).compareTo(priceBuyAmountOrderTmp) >= 0) {
-            transactionAmountSellCurrency = priceBuyAmountOrderTmp;
-            transactionAmountBuyCurrency = buyAmountOrderTmp;
-        } else {
-            transactionAmountSellCurrency = buyer.getBalance(sellCurrency);
-            transactionAmountBuyCurrency = transactionAmountSellCurrency.divide(transactionPrice, RoundingMode.DOWN);
-        }
+//        // Проверка баланса покупателя
+//        BigDecimal transactionAmountSellCurrency;
+//        BigDecimal transactionAmountBuyCurrency;
+//        if (buyer.getBalance(sellCurrency).compareTo(priceBuyAmountOrderTmp) >= 0) {
+//            transactionAmountSellCurrency = priceBuyAmountOrderTmp;
+//            transactionAmountBuyCurrency = buyAmountOrderTmp;
+//        } else {
+//            transactionAmountSellCurrency = buyer.getBalance(sellCurrency);
+//            transactionAmountBuyCurrency = transactionAmountSellCurrency.divide(transactionPrice, RoundingMode.DOWN);
+//        }
 
 //        transactionAmountSellCurrency = priceBuyAmountOrderTmp;
 //        transactionAmountBuyCurrency = buyAmountOrderTmp;
 
-        // Обновление балансов
-        buyer.updateBalance(sellCurrency, transactionAmountSellCurrency, false);
-        buyer.updateBalance(buyCurrency, transactionAmountBuyCurrency, true);
-
-        seller.updateBalance(sellCurrency, transactionAmountSellCurrency, true);
-        seller.updateBalance(buyCurrency, transactionAmountBuyCurrency, false);
+//        // Обновление балансов
+//        buyer.updateBalance(sellCurrency, transactionAmountSellCurrency, false);
+//        buyer.updateBalance(buyCurrency, transactionAmountBuyCurrency, true);
+//
+//        seller.updateBalance(sellCurrency, transactionAmountSellCurrency, true);
+//        seller.updateBalance(buyCurrency, transactionAmountBuyCurrency, false);
 
 //        try {
 //            buyer.updateBalance(sellCurrency, transactionAmountSellCurrency, false);
@@ -377,26 +386,27 @@ public class Exchange implements IExchange {
 //        }
 
 
-        // Логирование сделки
-        String transactionLog = "|----------TRANSACTION COMPLETE----------|\n" +
-                "ID ордера (покупка): " + buyOrder.getId() +
-                ", Покупатель ID: " + buyer.getId() + "\n" +
-                "ID ордера (продажа): " + sellOrder.getId() +
-                ", Продавец ID: " + seller.getId() + "\n" +
-                "Валютная пара: " + buyOrder.getCurrencyPair() + "\n" +
-                "Сумма транзакции " + buyCurrency + ": " + transactionAmountBuyCurrency + "\n" +
-                "Сумма транзакции " + sellCurrency + ": " + transactionAmountSellCurrency + "\n" +
-                "Баланс покупателя до сделки: " + buyerOldBalanceSellCurrency + " " +
-                sellCurrency + ", после сделки: " + buyer.getBalance(sellCurrency) + "\n" +
-                "Баланс покупателя до сделки: " + buyerOldBalanceBuyCurrency + " " +
-                buyCurrency + ", после сделки: " + buyer.getBalance(buyCurrency) + "\n" +
-                "Баланс продавца до сделки: " + sellerOldBalanceBuyCurrency + " " +
-                buyCurrency + ", после сделки: " + seller.getBalance(buyCurrency) + "\n" +
-                "Баланс продавца до сделки: " + sellerOldBalanceSellCurrency + " " +
-                sellCurrency + ", после сделки: " + seller.getBalance(sellCurrency) + "\n" +
-                "|----------------------------------------|";
-        System.out.println(transactionLog);
-        return Arrays.asList(transactionAmountSellCurrency, transactionAmountBuyCurrency);
+//        // Логирование сделки
+//        String transactionLog = "|----------TRANSACTION COMPLETE----------|\n" +
+//                "ID ордера (покупка): " + buyOrder.getId() +
+//                ", Покупатель ID: " + buyer.getId() + "\n" +
+//                "ID ордера (продажа): " + sellOrder.getId() +
+//                ", Продавец ID: " + seller.getId() + "\n" +
+//                "Валютная пара: " + buyOrder.getCurrencyPair() + "\n" +
+//                "Сумма транзакции " + buyCurrency + ": " + transactionAmountBuyCurrency + "\n" +
+//                "Сумма транзакции " + sellCurrency + ": " + transactionAmountSellCurrency + "\n" +
+//                "Баланс покупателя до сделки: " + buyerOldBalanceSellCurrency + " " +
+//                sellCurrency + ", после сделки: " + buyer.getBalance(sellCurrency) + "\n" +
+//                "Баланс покупателя до сделки: " + buyerOldBalanceBuyCurrency + " " +
+//                buyCurrency + ", после сделки: " + buyer.getBalance(buyCurrency) + "\n" +
+//                "Баланс продавца до сделки: " + sellerOldBalanceBuyCurrency + " " +
+//                buyCurrency + ", после сделки: " + seller.getBalance(buyCurrency) + "\n" +
+//                "Баланс продавца до сделки: " + sellerOldBalanceSellCurrency + " " +
+//                sellCurrency + ", после сделки: " + seller.getBalance(sellCurrency) + "\n" +
+//                "|----------------------------------------|";
+//        System.out.println(transactionLog);
+        return Arrays.asList(priceBuyAmountOrderTmp, buyAmountOrderTmp);
+//        return Arrays.asList(transactionAmountSellCurrency, transactionAmountBuyCurrency);
 
     }
 
