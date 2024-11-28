@@ -1,4 +1,4 @@
-package AsyncExchangeTests;
+package DisruptorExchangeTests;
 
 import labs.rsreu.clients.Client;
 import labs.rsreu.clients.ClientsList;
@@ -6,6 +6,7 @@ import labs.rsreu.currencies.Currency;
 import labs.rsreu.currencies.CurrencyPair;
 import labs.rsreu.currencies.CurrencyPairRegistry;
 import labs.rsreu.exchanges.AsyncExchange;
+import labs.rsreu.exchanges.DisruptorExchange;
 import labs.rsreu.exchanges.IExchange;
 import labs.rsreu.orders.Order;
 import labs.rsreu.orders.OrderType;
@@ -18,16 +19,13 @@ import java.math.BigDecimal;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.function.Consumer;
 
-import static java.lang.Thread.sleep;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class AsyncExchangeTest {
+public class DisruptorExchangeTest {
     private IExchange exchange;
-//    private AsyncExchangeOrderHandler handler;
     private ClientsList clientsList;
-//    private BlockingQueue<Order> orderQueue;
     private CurrencyPairRegistry currencyPairRegistry;
 
     @BeforeEach
@@ -51,13 +49,8 @@ public class AsyncExchangeTest {
             }
         }
 
-//        orderQueue = new LinkedBlockingQueue<>();
 
-        exchange = new AsyncExchange(/*orderQueue, */currencyPairRegistry);
-//        handler = new AsyncExchangeOrderHandler(orderQueue);
-//        Thread handlerThread = new Thread(handler);
-//        handlerThread.setDaemon(true); // Поток завершится вместе с основным потоком
-//        handlerThread.start();
+        exchange = new DisruptorExchange(currencyPairRegistry);
     }
 
     @Test
@@ -88,7 +81,7 @@ public class AsyncExchangeTest {
 
         TransactionInfo info = callbackQueue.poll();
         assertTrue(info.isHasError());
-        assertEquals("Order " + order.getId() + " has invalid currency pair", info.getErrorMessage());
+        assertEquals("Order " + order.getId() + " has invalid currency pair.", info.getErrorMessage());
     }
 
     @Test
@@ -114,7 +107,7 @@ public class AsyncExchangeTest {
             else callbackQueue.add(status);
         });
 
-        // Создаем ордер на покупку
+        // Создаем ордер на продажу
         Order sellOrder = new Order(OrderType.SELL, client2.getId(), new CurrencyPair(Currency.RUB, Currency.CNY), new BigDecimal("100"), new BigDecimal("200"));
         System.out.println(sellOrder);
         exchange.createOrder(sellOrder, status -> {
@@ -130,7 +123,7 @@ public class AsyncExchangeTest {
         transactionInfoHandler.processTransactions();
 
         Thread.sleep(10);
-//        System.out.println(clientsList.getClient(1));
+
         // Используем compareTo для сравнения значений без учета точности
         assertEquals(0, new BigDecimal("1100").compareTo(client.getBalance(Currency.RUB)));
         assertEquals(0, new BigDecimal("200").compareTo(client.getBalance(Currency.CNY)));
@@ -180,8 +173,10 @@ public class AsyncExchangeTest {
             assertEquals("Order " + order.getId() + " successfully submitted.", status.getMessage());
         });
 
+        Thread.sleep(100);
+
         // Закрываем биржу
-        exchange.closeExchange();
+//        exchange.closeExchange();
 
 
         order.addStatusCallback(status -> {

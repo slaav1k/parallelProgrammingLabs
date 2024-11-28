@@ -15,7 +15,6 @@ import java.util.function.Consumer;
 
 
 public class AsyncExchange implements IExchange{
-    private final Map<Integer, Client> clients = new HashMap<>();
     private final BlockingQueue<Order> orderQueue;
     private final CurrencyPairRegistry currencyPairRegistry;
     private final AsyncExchangeOrderHandler orderHandler;

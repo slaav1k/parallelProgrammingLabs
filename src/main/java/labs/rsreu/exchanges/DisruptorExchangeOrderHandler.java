@@ -1,57 +1,63 @@
 package labs.rsreu.exchanges;
 
-import labs.rsreu.clients.Client;
+import com.lmax.disruptor.EventHandler;
+import com.lmax.disruptor.RingBuffer;
 import labs.rsreu.currencies.Currency;
 import labs.rsreu.orders.Order;
 import labs.rsreu.orders.OrderType;
 import labs.rsreu.orders.TransactionInfo;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.*;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.Callable;
-import java.util.stream.Collectors;
+import java.util.function.Consumer;
 
-public class AsyncExchangeOrderHandler implements Runnable {
-    private final BlockingQueue<Order> orderQueue;
-    private boolean isExchangeClosed = false;
+public class DisruptorExchangeOrderHandler implements EventHandler<OrderEvent> {
+    private final RingBuffer<ResponseEvent> responseBuffer;
+    private final PriorityQueue<Order> sellOrdersQueue;
+    private final PriorityQueue<Order> buyOrdersQueue;
+    private boolean isHandlerClosed;
 
-
-
-    public AsyncExchangeOrderHandler(BlockingQueue<Order> orderQueue) {
-        this.orderQueue = orderQueue;
+    public DisruptorExchangeOrderHandler(RingBuffer<ResponseEvent> responseBuffer) {
+        this.responseBuffer = responseBuffer;
+        this.sellOrdersQueue = new PriorityQueue<>(Comparator.comparing(Order::getPrice).reversed());
+        this.buyOrdersQueue = new PriorityQueue<>(Comparator.comparing(Order::getPrice));
     }
 
-
     @Override
-    public void run() {
-        try {
-            while (!isExchangeClosed) {
-                Order order = orderQueue.take();
+    public void onEvent(OrderEvent event, long sequence, boolean endOfBatch) {
+        if (!isHandlerClosed) {
+            processOrder(event.getOrder());
+        }
+    }
 
-                if (order.getType() == OrderType.BUY) {
-                    processBuyOrder(order);
-                } else {
-                    processSellOrder(order);
-                }
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();  // Восстановим флаг прерывания
-            System.err.println("Order processing was interrupted: " + e.getMessage());
+    private void sendResponse(TransactionInfo transactionInfo, Consumer<TransactionInfo> callback) {
+        responseBuffer.publishEvent((responseEvent, sequence) -> {
+            responseEvent.setTransactionInfo(transactionInfo);
+            responseEvent.setCallback(callback);
+        });
+    }
+
+    private void processOrder(Order order) {
+        if (order.getType() == OrderType.BUY) {
+            buyOrdersQueue.offer(order);
+            processBuyOrder(order);
+        } else {
+            sellOrdersQueue.offer(order);
+            processSellOrder(order);
         }
     }
 
     private void processBuyOrder(Order buyOrder) {
-        List<Order> sellOrders = getSellOrders();
-        Iterator<Order> iterator = sellOrders.iterator();
+//        List<Order> sellOrders = getSellOrders();
+//        Iterator<Order> iterator = sellOrders.iterator();
+        Iterator<Order> iterator = sellOrdersQueue.iterator();
         while (iterator.hasNext()) {
             Order eachSellOrder = iterator.next();
             if (eachSellOrder.getClientId() != buyOrder.getClientId()
                     && eachSellOrder.getCurrencyPair().equals(buyOrder.getCurrencyPair())
                     && eachSellOrder.getPrice().compareTo(buyOrder.getPrice()) <= 0) {
-
-                BigDecimal transactionPrice = buyOrder.getPrice();
+                BigDecimal transactionPrice = eachSellOrder.getPrice();
+//                BigDecimal transactionPrice = buyOrder.getPrice();
                 List<BigDecimal> transactionsAmountCurrency = processTransaction(buyOrder, eachSellOrder, transactionPrice);
 
                 BigDecimal transactionAmountBuyCurrency = transactionsAmountCurrency.get(1);
@@ -77,15 +83,23 @@ public class AsyncExchangeOrderHandler implements Runnable {
                 } else {
                     buyOrder.setAmountFirst(remainingAmountBuyCurrency);
                     buyOrder.setAmountSecond(remainingAmountSellCurrency);
+                    sendResponse(
+                            new TransactionInfo("Buyer " + buyOrder.getClientId() + " bought some part. Order "
+                            + buyOrder.getId() + " still open."),
+                            buyOrder.getCallback());
                     buyOrder.notifyStatus(new TransactionInfo("Buyer " + buyOrder.getClientId() + " bought some part. Order "
                             + buyOrder.getId() + " still open."));
-                    orderQueue.add(buyOrder);
+
+//                    orderBuffer.publishEvent((event, sequence) -> event.setOrder(buyOrder));
+                    buyOrdersQueue.offer(buyOrder);
                 }
 
                 // Обновление ордера на продажу, если остаток больше нуля
                 if (remainingAmountSellOrderBuyCurrency.compareTo(BigDecimal.ZERO) == 0) {
                     iterator.remove();
-                    orderQueue.remove(eachSellOrder);
+//                    orderBuffer.publishEvent((event, sequence) -> event.setOrder(buyOrder));
+                    sellOrdersQueue.remove(eachSellOrder);
+//                    orderQueue.remove(eachSellOrder);
                     eachSellOrder.notifyStatus(new TransactionInfo("Seller " + eachSellOrder.getClientId() + " all sold. Order "
                             + eachSellOrder.getId() + " closed."));
 
@@ -100,9 +114,9 @@ public class AsyncExchangeOrderHandler implements Runnable {
     }
 
     private void processSellOrder(Order sellOrder) {
-        List<Order> buyOrders = getBuyOrders();
-        Iterator<Order> iterator = buyOrders.iterator();
-
+//        List<Order> buyOrders = getBuyOrders();
+//        Iterator<Order> iterator = buyOrders.iterator();
+        Iterator<Order> iterator = buyOrdersQueue.iterator();
         while (iterator.hasNext()) {
             Order eachBuyOrder = iterator.next();
 
@@ -111,8 +125,8 @@ public class AsyncExchangeOrderHandler implements Runnable {
                     && eachBuyOrder.getCurrencyPair().equals(sellOrder.getCurrencyPair())
                     && eachBuyOrder.getPrice().compareTo(sellOrder.getPrice()) >= 0) {
 
-
-                BigDecimal transactionPrice = sellOrder.getPrice();
+                BigDecimal transactionPrice = eachBuyOrder.getPrice();
+//                BigDecimal transactionPrice = sellOrder.getPrice();
                 List<BigDecimal> transactionsAmountCurrency = processTransaction(eachBuyOrder, sellOrder, transactionPrice);
                 BigDecimal transactionAmountBuyCurrency = transactionsAmountCurrency.get(1);
                 BigDecimal transactionAmountSellCurrency = transactionsAmountCurrency.get(0);
@@ -132,22 +146,22 @@ public class AsyncExchangeOrderHandler implements Runnable {
 
                 // Обновление ордера на продажу, если остаток больше нуля
                 if (remainingAmountSellCurrency.compareTo(BigDecimal.ZERO) == 0) {
-//                    System.out.println("Продавец продал все, заявка удалена.");
                     sellOrder.notifyStatus(new TransactionInfo("Seller " + sellOrder.getClientId() + " all sold. Order "
                             + sellOrder.getId() + " closed."));
-//                    resultCallback.accept("Продавец продал все, заявка удалена.");
                 } else {
                     sellOrder.setAmountFirst(remainingAmountSellCurrency);
                     sellOrder.setAmountSecond(remainingAmountBuyCurrency);
                     sellOrder.notifyStatus(new TransactionInfo("Seller " + sellOrder.getClientId() + " sold some part. Order "
                             + sellOrder.getId() + " still open."));
-                    orderQueue.add(sellOrder);
+//                    orderQueue.add(sellOrder);
+                    sellOrdersQueue.offer(sellOrder);
                 }
 
                 // Обновление ордера на покупку, если остаток больше нуля
                 if (remainingAmountBuyOrderSellCurrency.compareTo(BigDecimal.ZERO) == 0) {
                     iterator.remove();
-                    orderQueue.remove(eachBuyOrder);
+                    sellOrdersQueue.remove(eachBuyOrder);
+//                    orderQueue.remove(eachBuyOrder);
                     eachBuyOrder.notifyStatus(new TransactionInfo("Buyer " + eachBuyOrder.getClientId() + " all bought. Order "
                             + eachBuyOrder.getId() + " closed."));
                 } else {
@@ -177,32 +191,24 @@ public class AsyncExchangeOrderHandler implements Runnable {
 
 
         return Arrays.asList(priceBuyAmountOrderTmp, buyAmountOrderTmp);
-
     }
-
-    private List<Order> getSellOrders() {
-        return orderQueue.stream()
-                .filter(order -> order.getType() == OrderType.SELL) // Фильтруем ордера на продажу
-                .sorted(Comparator.comparing(Order::getPrice).reversed()) // Сортируем по цене (убывание)
-                .collect(Collectors.toList());
-    }
-
-    private List<Order> getBuyOrders() {
-        return orderQueue.stream()
-                .filter(order -> order.getType() == OrderType.BUY) // Фильтруем ордера на покупку
-                .sorted(Comparator.comparing(Order::getPrice)) // Сортируем по цене
-                .collect(Collectors.toList());
-    }
-
 
     public void closeExchange() {
-        isExchangeClosed = true;
+        isHandlerClosed = true; // Установка флага остановки
+        // Оповещение клиентов об отмене всех оставшихся ордеров
+        notifyAllOrdersCancelled();
+    }
 
-        for (Order order : orderQueue) {
+    private void notifyAllOrdersCancelled() {
+        for (Order order : sellOrdersQueue) {
+            order.notifyStatus(new TransactionInfo(true,"Order canceled: Exchange is closed."));
+        }
+        for (Order order : buyOrdersQueue) {
             order.notifyStatus(new TransactionInfo(true,"Order canceled: Exchange is closed."));
         }
 
-
-        orderQueue.clear();
+        sellOrdersQueue.clear();
+        buyOrdersQueue.clear();
     }
+
 }
