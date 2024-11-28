@@ -1,13 +1,17 @@
 package DisruptorExchangeTests;
 
+import com.lmax.disruptor.BlockingWaitStrategy;
+import com.lmax.disruptor.EventFactory;
+import com.lmax.disruptor.RingBuffer;
+import com.lmax.disruptor.dsl.Disruptor;
+import com.lmax.disruptor.dsl.ProducerType;
+import com.lmax.disruptor.util.DaemonThreadFactory;
 import labs.rsreu.clients.Client;
 import labs.rsreu.clients.ClientsList;
 import labs.rsreu.currencies.Currency;
 import labs.rsreu.currencies.CurrencyPair;
 import labs.rsreu.currencies.CurrencyPairRegistry;
-import labs.rsreu.exchanges.AsyncExchange;
-import labs.rsreu.exchanges.DisruptorExchange;
-import labs.rsreu.exchanges.IExchange;
+import labs.rsreu.exchanges.*;
 import labs.rsreu.orders.OrderTask;
 import labs.rsreu.orders.TransactionInfo;
 import labs.rsreu.orders.TransactionInfoHandler;
@@ -34,11 +38,48 @@ public class LoadDisruptorExchangeTest {
         CurrencyPairRegistry currencyPairRegistry = new CurrencyPairRegistry();
 //        addRandomCurrencyPairs(currencyPairRegistry);
         addAllCurrencyPairs(currencyPairRegistry);
-        IExchange exchange = new DisruptorExchange(currencyPairRegistry);
+
+//        // Создаем responseBuffer для обработки ответов
+        int bufferSize = 2048 * 128;
+//        EventFactory<ResponseEvent> responseFactory = ResponseEvent::new;
+////        RingBuffer<ResponseEvent> responseBuffer = RingBuffer.createSingleProducer(responseFactory, bufferSize, new BlockingWaitStrategy());
+//        RingBuffer<ResponseEvent> responseBuffer = RingBuffer.create(
+//                ProducerType.MULTI,         // Разрешаем доступ из нескольких потоков
+//                responseFactory,            // Фабрика событий
+//                bufferSize,                 // Размер буфера
+//                new BlockingWaitStrategy()  // Используем блокирующую стратегию ожидания
+//        );
 
         // Генерация и создание клиентов
         ClientsList clients = new ClientsList();
         generateClients(MAX_COUNT_CLIENTS, clients);
+
+        // Создаем Disruptor
+        Disruptor<ResponseEvent> disruptor = new Disruptor<>(
+                ResponseEvent::new,          // Фабрика событий
+                bufferSize,                  // Размер буфера
+                DaemonThreadFactory.INSTANCE, // Потокобезопасная фабрика потоков
+                ProducerType.MULTI,          // Поддержка многопоточной публикации
+                new BlockingWaitStrategy()   // Стратегия ожидания
+        );
+
+        // Передача обработчика событий
+        ResponseEventHandler handler = new ResponseEventHandler(clients);
+        disruptor.handleEventsWith(handler);
+
+        // Запуск Disruptor
+        disruptor.start();
+
+        // Получаем RingBuffer из Disruptor
+        RingBuffer<ResponseEvent> responseBuffer = disruptor.getRingBuffer();
+
+
+
+        IExchange exchange = new DisruptorExchange(currencyPairRegistry, responseBuffer);
+
+
+
+
 
         // Сохраняем начальный баланс биржи по каждой валюте
         EnumMap<Currency, BigDecimal> initialBalances = clients.getTotalBalances();
@@ -47,6 +88,7 @@ public class LoadDisruptorExchangeTest {
         ExecutorService executorService = Executors.newFixedThreadPool(clients.size());
 
         ConcurrentLinkedQueue<TransactionInfo> callbackQueue = new ConcurrentLinkedQueue<>();
+
 
         // Запускаем задачи для каждого клиента
         List<Callable<String>> tasks = new ArrayList<>();
@@ -68,9 +110,14 @@ public class LoadDisruptorExchangeTest {
 
         // Закрываем executor
         executorService.shutdown();
+        disruptor.shutdown();
 
-        TransactionInfoHandler transactionInfoHandler = new TransactionInfoHandler(clients, callbackQueue);
-        transactionInfoHandler.processTransactions();
+//        TransactionInfoHandler transactionInfoHandler = new TransactionInfoHandler(clients, callbackQueue);
+//        transactionInfoHandler.processTransactions();
+
+
+//        TransactionInfoHandler transactionInfoHandler = new TransactionInfoHandler(clients, responseBuffer);
+//        transactionInfoHandler.processTransactionsDisruptor();
 
         // Сравниваем итоговый баланс биржи по каждой валюте
         EnumMap<Currency, BigDecimal> finalBalances = clients.getTotalBalances();
